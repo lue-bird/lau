@@ -25,9 +25,6 @@ some highlights
     - no pointers
     - no runtime errors
     - no effects – everything is values and transformations
-    - everything is lazy
-        - `List.map age |> List.take 3` = `List.take 3 |> List.map age` for example. No need to optimize
-        - no need to care about duplicate calls with the same arguments. They're cashed
 - just wire outputs of one thing as the input to something else
     - no brackets, no semicolons, no tabs/spaces, no separators or leading symbols
     - no positional arguments, no prefix vs infix vs postfix
@@ -53,5 +50,8 @@ some highlights
         - for example color, number, character
     - generator → `generate`
         - for example color, number, character, import
+- everything is lazy
+    - `List.map age |> List.take 3` = `List.take 3 |> List.map age` for example. No need to optimize
+    - no need to care about duplicate calls with the same arguments. They're cashed
 
 [Read more about why lau is designed the way it is](design/)
