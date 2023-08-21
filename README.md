@@ -5,7 +5,7 @@ A brain load reducing visual programming language.
 
 some highlights
 - a fully graphical studio with embedded uis that you can write in lau itself
-- you don't talk to lau in types, but it still know as much as you about your code
+- you don't talk to lau in types but lau still knows as much as you about your code
 - definitions are unique around the world forever
 - laziness all the way, you won't have to worry about caching and many other optimizations
 - semantic versioning, existing code won't suddenly stop running after dependency upgrade
