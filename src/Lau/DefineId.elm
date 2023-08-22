@@ -1,6 +1,7 @@
 module Lau.DefineId exposing
     ( DefineId, Tag(..)
     , raw, random
+    , morphValue
     )
 
 {-| Unique identifier of a defined thing.
@@ -12,15 +13,24 @@ module Lau.DefineId exposing
 
 @docs raw, random
 
+
+## transform
+
+@docs morphValue
+
 -}
 
+import Array.Morph
 import ArraySized exposing (ArraySized)
 import Bit exposing (Bit)
+import Bit.Morph
 import Linear exposing (Direction(..))
-import N exposing (Exactly)
+import Morph
+import N exposing (Add1, Exactly, In, N, To, Up)
 import N.Local exposing (N160, n160)
 import Random
 import Typed exposing (Public, Tagged, Typed)
+import Value.Morph exposing (MorphValue)
 
 
 {-| One of `2^160` different possible unique keys.
@@ -102,3 +112,39 @@ raw b0 b1 b2 b3 b4 b5 b6 b7 b8 b9 b10 b11 b12 b13 b14 b15 b16 b17 b18 b19 b20 b2
         |> ArraySized.attach Up (ArraySized.l16 b144 b145 b146 b147 b148 b149 b150 b151 b152 b153 b154 b155 b156 b157 b158 b159)
         |> ArraySized.inToNumber
         |> Typed.tag Tag
+
+
+{-| [`MorphValue`](https://dark.elm.dmy.fr/packages/lue-bird/elm-morph/latest/Value-Morph#MorphValue) from a [`DefineId`](#DefineId)
+-}
+morphValue : MorphValue DefineId
+morphValue =
+    Morph.oneToOne (Typed.tag Tag) Typed.untag
+        |> Morph.over (Morph.oneToOne ArraySized.inToNumber ArraySized.inToOn)
+        |> Morph.over (arraySizedMorphExactlyValue Bit.Morph.value n160)
+
+
+arraySizedMorphExactlyValue :
+    MorphValue element
+    -> N (In (Up minX To (Add1 comparedAgainstMinPlusXFrom1)) (Up maxX To (Add1 comparedAgainstMaxPlusXFrom1)))
+    ->
+        MorphValue
+            (ArraySized
+                element
+                (In (Up minX To (Add1 comparedAgainstMinPlusXFrom1)) (Up maxX To (Add1 comparedAgainstMaxPlusXFrom1)))
+            )
+arraySizedMorphExactlyValue elementMorphValue sizeExactly =
+    Morph.custom ("exactly " ++ (sizeExactly |> N.toString))
+        { toBroad = ArraySized.toArray
+        , toNarrow =
+            \array ->
+                case array |> ArraySized.fromArray |> ArraySized.has sizeExactly of
+                    Err (N.Below below) ->
+                        (below |> ArraySized.length |> N.toString) ++ " is too few elements" |> Err
+
+                    Err (N.Above above) ->
+                        (above |> ArraySized.length |> N.toString) ++ " is too many elements" |> Err
+
+                    Ok perfectlySizedArray ->
+                        perfectlySizedArray |> Ok
+        }
+        |> Morph.over (Array.Morph.value elementMorphValue)
