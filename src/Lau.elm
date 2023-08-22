@@ -1,7 +1,7 @@
 module Lau exposing
     ( Script, DefineElement, FeedElement, ScriptElement, ScriptElementKind(..)
     , coreScript
-    , availableDefinesAt
+    , definesAvailableAt, nativeDefines, nonNativeDefinesAvailableAt
     )
 
 {-| Core language.
@@ -10,19 +10,27 @@ module Lau exposing
 @docs coreScript
 
 
-## operations
+## observe
 
-@docs availableDefinesAt
+@docs definesAvailableAt, nativeDefines, nonNativeDefinesAvailableAt
+
+
+## interpret in elm
+
+Only when one of these functions gets called, the values are evaluated.
+
+  - Svg
+      - `graphics ←def & (list character) (& (list character) (& (list (graphics attribute)) (list graphics)))`
+      - `graphics attribute ←def (list character) (list character)`
 
 -}
 
 import Bit exposing (Bit(..))
 import Forest.Path
-import Lau.DefinedId as Id exposing (DefinedId, id)
+import Lau.DefineId exposing (DefineId)
 import Pixels exposing (Pixels)
 import Point2d exposing (Point2d)
 import RecordWithoutConstructorFunction exposing (RecordWithoutConstructorFunction)
-import Serialize exposing (Codec)
 import Tree exposing (Tree)
 import Tree.Navigate
 import Tree.Path exposing (TreePath)
@@ -57,20 +65,55 @@ type ScriptElementKind
 -}
 type alias FeedElement =
     RecordWithoutConstructorFunction
-        { definedId : DefinedId }
+        { defineId : DefineId }
 
 
 {-| Define something new
 -}
 type alias DefineElement =
     RecordWithoutConstructorFunction
-        { id : DefinedId }
+        { id : DefineId }
 
 
 {-| What is defined in scope for a the thing at a given path?
+Consists of both [`nativeDefines`](#nativeDefines) and [`nonNativeDefinesAvailableAt`](#nonNativeDefinesAvailableAt) that given path.
 -}
-availableDefinesAt : TreePath -> Script -> List DefineElement
-availableDefinesAt path =
+definesAvailableAt : TreePath -> Script -> List DefineElement
+definesAvailableAt path =
+    \script ->
+        (script |> nonNativeDefinesAvailableAt path)
+            ++ nativeDefines
+
+
+inId : DefineId
+inId =
+    Lau.DefineId.raw I O I I I O I O O O O O I I I I O O O O O I I O I O O I I O O I I I O O I I O O O I O I O O I I I I I O O I I I I O O O I O I O O O I O I O I O I O I I O O O O O I I I O O I O I O I O O O I I O O O I O I O I O I I I O O O I O O O I I O I I O I O I O O I I I O I I O I I I I I O O O O O I I O O I I I I I O O I O O I O O
+
+
+asId : DefineId
+asId =
+    Lau.DefineId.raw O I O O O O I O I I I I I O I I O I I I O O O O O I O I O I O O I O I I I I I O O I I I I I O I O O I O I I O O I I O I I O I I I I I I I I O O O I O I I O I O I O O O O O I O O O I I O O I O O I I I O I I O O I O I O I O O I I I O O O O I I I O I I I I O I I O O O O O O I I I I I O I I I I I O I I I O I O I I I O O O
+
+
+{-| Native defines would lead to infinite define circles because they are needed in the define construct itself.
+
+This makes them a bit ugly to work with, e.g. you can't jump to their definition
+
+-}
+nativeDefines : List DefineElement
+nativeDefines =
+    [ { id = asId }, { id = inId }, { id = nameId } ]
+
+
+nameId : DefineId
+nameId =
+    Lau.DefineId.raw I I O O O I I O I I I O I I O O I O I I I O O O O O I I O I O O O I O I O O O O I I I O O O O I O O I O O I O I O O I I I I I I I O O O I O I I O I O O O O O O I O I I O I I O I O I O O O I I I O I O O O I I O I I I O I O I I O I O I I I O O O O O I I O O O I I O I O O I O O I O O I O O I O O I O I O I I I I O I O I O
+
+
+{-| What is defined in scope for a the thing at a given path, excluding [`nativeDefines`](#nativeDefines)
+-}
+nonNativeDefinesAvailableAt : TreePath -> Script -> List DefineElement
+nonNativeDefinesAvailableAt path =
     \script ->
         case path |> Tree.Path.step of
             Nothing ->
@@ -90,63 +133,37 @@ availableDefinesAt path =
                             Feed _ ->
                                 identity
                         )
-                            (laterDefinitions |> availableDefinesAt (childPath |> Forest.Path.pathIntoTreeAtIndex))
+                            (laterDefinitions |> definesAvailableAt (childPath |> Forest.Path.pathIntoTreeAtIndex))
 
 
 {-| **In progress.**
 Contains natively defined core definitions & definitions that build on those.
 
 
-## language-native primitives
+## language primitives
 
   - counting set/multiset/bag type. Will in the following be shown as `{ one, two }`
-  - definition
-  - partial application if parts of an argument set are missing
+  - definition 🧩 {name, as, in-(gets #id replaced with as shown as name)} where any inputs coming from `in` will know of this definition
+  - partial application if parts of an argument set is missing
 
 
-## derived features
+## language core defines
 
-  - empty type and empty value are just an empty set. D.h. giving an empty set is equivalent to not giving anything
-  - a defined tag is a function `a -> { tag tag, value a }` by default (named tbd)
-  - `choice` (untagged union/choice type) taking one case to `a` and returning a choice between `a` and the other possibilities.
+  - an empty value is just an empty set. Giving an empty set is equivalent to not giving anything
+  - a defined tag is a function `a -> { tag tag, value a }` by default
     `choice { a, a }` will be seen as equivalent to `a` (and `choice { a, a, x }` will be seen as equivalent to `choice { a, x }`) once all have been matched
   - `list a ←def or ○ ({ #head a, #tail (list a) })`
   - number
-      - `1+ ←unique-type-def & ○ natural`
-      - `0 ←unique-type-def ○`
-          - `bit ←def or 0 (1+ 0)`
-          - `natural ←def or 0 (1+ natural)`
-          - `positive ←def 1+ natural`
-      - `negative ←def positive`
-          - `whole ←def or natural negative`
-      - `rational ←def & whole positive`
-      - `digit ←def natural-in-range (& 0 9)`
-          - `decimal ←def or (& decimal digit)`
-  - `def-id ←def list-of 160 bit`
-  - `character ←def natural-in-range (& 0 1114112)` see <https://en.wikipedia.org/wiki/Code_point>
-
-
-### translation to elm code
-
-Only when one of these functions gets called, the values are evaluated.
-
-  - Svg
-      - `graphics ←def & (list character) (& (list character) (& (list (graphics attribute)) (list graphics)))`
-      - `graphics attribute ←def (list character) (list character)`
+      - `1+`, `0`
+      - `negative`, `positive`
+  - `character is a natural-in-range [0; 1114112]` see <https://en.wikipedia.org/wiki/Code_point>
 
 -}
 coreScript : Script
 coreScript =
-    -- define 🧩 {name, as, in-(gets #id replaced with as shown as name)} = in
+    -- define
     -- tag defined as a function `value -> { #tag tag, #value value }`
-    Tree.tree (Define { id = asId })
-        [ Tree.tree (Define { id = inId })
-            [ Tree.tree (Define { id = asId })
-                [ Tree.tree (Feed { definedId = asId })
-                    [ Tree.singleton (Feed { definedId = inId }) ]
-                ]
-            ]
-        ]
+    Debug.todo ""
         -- todo
         |> Tree.map
             (\kind ->
@@ -154,15 +171,3 @@ coreScript =
                 , kind = kind
                 }
             )
-
-
-{-| a throw-away id; results in not finding a function when searching
--}
-inId : DefinedId
-inId =
-    id I O I I I O I O O O O O I I I I O O O O O I I O I O O I I O O I I I O O I I O O O I O I O O I I I I I O O I I I I O O O I O I O O O I O I O I O I O I I O O O O O I I I O O I O I O I O O O I I O O O I O I O I O I I I O O O I O O O I I O I I O I O I O O I I I O I I O I I I I I O O O O O I I O O I I I I I O O I O O I O O
-
-
-asId : DefinedId
-asId =
-    id O I O O O O I O I I I I I O I I O I I I O O O O O I O I O I O O I O I I I I I O O I I I I I O I O O I O I I O O I I O I I O I I I I I I I I O O O I O I I O I O I O O O O O I O O O I I O O I O O I I I O I I O O I O I O I O O I I I O O O O I I I O I I I I O I I O O O O O O I I I I I O I I I I I O I I I O I O I I I O O O
