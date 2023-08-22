@@ -85,16 +85,6 @@ definesAvailableAt path =
             ++ nativeDefines
 
 
-inId : DefineId
-inId =
-    Lau.DefineId.raw I O I I I O I O O O O O I I I I O O O O O I I O I O O I I O O I I I O O I I O O O I O I O O I I I I I O O I I I I O O O I O I O O O I O I O I O I O I I O O O O O I I I O O I O I O I O O O I I O O O I O I O I O I I I O O O I O O O I I O I I O I O I O O I I I O I I O I I I I I O O O O O I I O O I I I I I O O I O O I O O
-
-
-asId : DefineId
-asId =
-    Lau.DefineId.raw O I O O O O I O I I I I I O I I O I I I O O O O O I O I O I O O I O I I I I I O O I I I I I O I O O I O I I O O I I O I I O I I I I I I I I O O O I O I I O I O I O O O O O I O O O I I O O I O O I I I O I I O O I O I O I O O I I I O O O O I I I O I I I I O I I O O O O O O I I I I I O I I I I I O I I I O I O I I I O O O
-
-
 {-| Native defines would lead to infinite define circles because they are needed in the define construct itself.
 
 This makes them a bit ugly to work with, e.g. you can't jump to their definition
@@ -103,6 +93,16 @@ This makes them a bit ugly to work with, e.g. you can't jump to their definition
 nativeDefines : List DefineElement
 nativeDefines =
     [ { id = asId }, { id = inId }, { id = nameId } ]
+
+
+inId : DefineId
+inId =
+    Lau.DefineId.raw I O I I I O I O O O O O I I I I O O O O O I I O I O O I I O O I I I O O I I O O O I O I O O I I I I I O O I I I I O O O I O I O O O I O I O I O I O I I O O O O O I I I O O I O I O I O O O I I O O O I O I O I O I I I O O O I O O O I I O I I O I O I O O I I I O I I O I I I I I O O O O O I I O O I I I I I O O I O O I O O
+
+
+asId : DefineId
+asId =
+    Lau.DefineId.raw O I O O O O I O I I I I I O I I O I I I O O O O O I O I O I O O I O I I I I I O O I I I I I O I O O I O I I O O I I O I I O I I I I I I I I O O O I O I I O I O I O O O O O I O O O I I O O I O O I I I O I I O O I O I O I O O I I I O O O O I I I O I I I I O I I O O O O O O I I I I I O I I I I I O I I I O I O I I I O O O
 
 
 nameId : DefineId
