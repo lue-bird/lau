@@ -1,0 +1,10 @@
+{
+    "type": "module",
+    "dependencies": {
+        "@lue-bird/elm-state-interface": "^2.0.0"
+    },
+    "devDependencies": {
+        "vite": "^5.1.2",
+        "vite-plugin-elm-watch": "^1.3.2"
+    }
+}
