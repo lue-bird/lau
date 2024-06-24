@@ -12,10 +12,10 @@ Reduces things you need to know and keep in your mind.
   - visual:
     put differently colored and shaped blocks together
   - minimal:
-    value, variable, all, any, =, not, definition. That's everything.
-    No spooky things to keep in mind like mutation, pointers, side effects, runtime errors,
-    no typeclasses/traits/interfaces, no lambda, no local definition, no difference between types and code,
-    no modules, no classes, no packages, no namespaces
+    value, variable, definition, all, any, =, not. That's everything.
+    No spooky things to keep in mind like mutation, pointer, unmanaged effect, runtime error,
+    no typeclass/trait/interface, no lambda, no local definition, no difference between types and code,
+    no module, no class, no package, no namespace
 
 
 ## web
