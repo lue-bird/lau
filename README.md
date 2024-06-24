@@ -13,12 +13,9 @@ Reduces things you need to know and keep in your mind.
     put differently colored and shaped blocks together
   - minimal:
     value, variable, all, any, =, not, definition. That's everything.
-
-what does this give you?
-
-  - no lambda, no local definition, no typeclasses/traits/interfaces, no difference between types and code
-  - no spooky things to keep in mind like mutation, pointers, side effects, runtime errors
-  - No modules, no classes, no packages, no namespaces
+    No spooky things to keep in mind like mutation, pointers, side effects, runtime errors,
+    no typeclasses/traits/interfaces, no lambda, no local definition, no difference between types and code,
+    no modules, no classes, no packages, no namespaces
 
 
 ## web
