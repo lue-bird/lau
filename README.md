@@ -1,4 +1,4 @@
-> status: language evaluation isn't working just yet, studio is not complete and barely interactive
+> status: language evaluation isn't working just yet, studio is missing block sidebar, deletion, value lookup creation and evaluation frame
 
 Declarative, visual, minimal programming language.
 Reduces things you need to know and keep in your mind.
