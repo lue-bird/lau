@@ -38,8 +38,12 @@ type alias DragState =
 
 type DraggedThing
     = DraggedFact FactUiState
-    | DraggedValueLookup (FastDict.Dict String ValueUiState)
+    | DraggedValueLookup ValueLookupUiState
     | DraggedVariable String
+
+
+type alias ValueLookupUiState =
+    List { key : String, value : ValueUiState }
 
 
 type FactUiState
@@ -53,7 +57,7 @@ type FactUiState
 type ValueUiState
     = ValueHole
     | Variable String
-    | ValueLookup (FastDict.Dict String ValueUiState)
+    | ValueLookup ValueLookupUiState
 
 
 valueUiStateToLau : ValueUiState -> Maybe (Lau.ValueWithVariableName String)
@@ -69,11 +73,10 @@ valueUiStateToLau =
             ValueLookup entriesWithHoles ->
                 Maybe.map Lau.ValueLookup
                     (entriesWithHoles
-                        |> FastDict.toList
                         |> List.LocalExtra.allJustMap
-                            (\( entryName, entryValueWithHoles ) ->
-                                Maybe.map (\entryValue -> ( entryName, entryValue ))
-                                    (entryValueWithHoles |> valueUiStateToLau)
+                            (\entry ->
+                                Maybe.map (\entryValue -> ( entry.key, entryValue ))
+                                    (entry.value |> valueUiStateToLau)
                             )
                         |> Maybe.map FastDict.fromList
                     )
@@ -2081,18 +2084,18 @@ valueSvg dragState =
                         )
 
 
-valueLookupShapeSvg : FastDict.Dict String ValueUiState -> SizedSvg future_
+valueLookupShapeSvg : ValueLookupUiState -> SizedSvg future_
 valueLookupShapeSvg valueLookup =
     Debug.todo ""
 
 
 valueLookupSvg :
     DragState
-    -> FastDict.Dict String ValueUiState
+    -> ValueLookupUiState
     ->
         SizedSvg
             { dragged : DragState
-            , valueLookup : Maybe (FastDict.Dict String ValueUiState)
+            , valueLookup : Maybe ValueLookupUiState
             }
 valueLookupSvg valueLookup =
     Debug.todo ""
