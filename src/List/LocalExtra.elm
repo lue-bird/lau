@@ -1,4 +1,18 @@
-module List.LocalExtra exposing (allJustMap, firstJustMap, oneOfEach)
+module List.LocalExtra exposing (allJustMap, elementAtIndexAlter, firstJustMap, oneOfEach)
+
+
+elementAtIndexAlter : Int -> (a -> a) -> (List a -> List a)
+elementAtIndexAlter indexToAlter elementAlter =
+    \list ->
+        list
+            |> List.indexedMap
+                (\futurePartIndex futurePart ->
+                    if futurePartIndex == indexToAlter then
+                        futurePart |> elementAlter
+
+                    else
+                        futurePart
+                )
 
 
 allJustMap : (a -> Maybe b) -> (List a -> Maybe (List b))
