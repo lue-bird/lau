@@ -18,7 +18,7 @@ type alias State =
     , relationDefinitions :
         FastDict.Dict
             String
-            { argument : ValueUiState
+            { parameter : ValueUiState
             , equivalentFact : Maybe FactUiState
             }
     , strayThings : List { x : Float, y : Float, thing : DraggedThing }
@@ -127,7 +127,7 @@ app =
         , dragged = Nothing
         , relationDefinitions =
             FastDict.singleton "main"
-                { argument = Variable "Result"
+                { parameter = Variable "Result"
                 , equivalentFact =
                     Any
                         [ All
@@ -257,7 +257,7 @@ interface state =
                             definitionAsSvg =
                                 relationDefinitionSvg state.dragged
                                     { name = name
-                                    , argument = definition.argument
+                                    , parameter = definition.parameter
                                     , equivalentFact = definition.equivalentFact
                                     }
                                     |> sizedSvgFutureMap
@@ -499,14 +499,14 @@ relationDefinitionSvg :
     DragState
     ->
         { name : String
-        , argument : ValueUiState
+        , parameter : ValueUiState
         , equivalentFact : Maybe FactUiState
         }
     ->
         SizedSvg
             { dragged : DragState
             , relationDefinition :
-                { argument : ValueUiState
+                { parameter : ValueUiState
                 , equivalentFact : Maybe FactUiState
                 }
             }
@@ -521,7 +521,7 @@ relationDefinitionSvg dragState definition =
             strokeWidth
                 + nameSvg.width
                 + spaceWidth
-                + argumentSvg.width
+                + parameterSvg.width
                 + spaceWidth
                 + equalsTextSvg.width
                 + strokeWidth
@@ -538,9 +538,9 @@ relationDefinitionSvg dragState definition =
         color =
             Color.rgb 0.2 0.2 0
 
-        argumentSvg : SizedSvg { dragged : DragState, value : ValueUiState }
-        argumentSvg =
-            definition.argument |> valueSvg dragState
+        parameterSvg : SizedSvg { dragged : DragState, value : ValueUiState }
+        parameterSvg =
+            definition.parameter |> valueSvg dragState
 
         equivalentFactSvg : SizedSvg { dragged : DragState, fact : Maybe FactUiState }
         equivalentFactSvg =
@@ -620,20 +620,20 @@ relationDefinitionSvg dragState definition =
                     , y = strokeWidth / 2
                     }
                 ]
-                [ argumentSvg.svg
+                [ parameterSvg.svg
                     |> Web.Dom.futureMap
                         (\futureArgumentUiState ->
                             { dragged = futureArgumentUiState.dragged
                             , relationDefinition =
                                 { equivalentFact = definition.equivalentFact
-                                , argument = futureArgumentUiState.value
+                                , parameter = futureArgumentUiState.value
                                 }
                             }
                         )
                 ]
             , stackSvg
                 [ svgAttributeTranslate
-                    { x = strokeWidth + nameSvg.width + spaceWidth + argumentSvg.width + spaceWidth
+                    { x = strokeWidth + nameSvg.width + spaceWidth + parameterSvg.width + spaceWidth
                     , y = (variableSvgHeight + strokeWidth) / 2
                     }
                 ]
@@ -650,7 +650,7 @@ relationDefinitionSvg dragState definition =
                             { dragged = equivalentFactUiState.dragged
                             , relationDefinition =
                                 { equivalentFact = equivalentFactUiState.fact
-                                , argument = definition.argument
+                                , parameter = definition.parameter
                                 }
                             }
                         )
