@@ -1,4 +1,4 @@
-module List.LocalExtra exposing (allJustMap, elementAtIndexAlter, firstJustMap, oneOfEach)
+module List.LocalExtra exposing (allJustMap, elementAtIndexAlter, firstJustMap, oneOfEach, removeElementAtIndex)
 
 
 elementAtIndexAlter : Int -> (a -> a) -> (List a -> List a)
@@ -13,6 +13,26 @@ elementAtIndexAlter indexToAlter elementAlter =
                     else
                         futurePart
                 )
+
+
+removeElementAtIndex : Int -> (List a -> List a)
+removeElementAtIndex indexToRemove =
+    \list ->
+        if indexToRemove <= -1 then
+            list
+
+        else
+            case list of
+                [] ->
+                    []
+
+                head :: tail ->
+                    case indexToRemove of
+                        0 ->
+                            tail
+
+                        indexToRemoveAtLeast1 ->
+                            head :: (tail |> removeElementAtIndex (indexToRemoveAtLeast1 - 1))
 
 
 allJustMap : (a -> Maybe b) -> (List a -> Maybe (List b))
