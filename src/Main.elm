@@ -549,7 +549,7 @@ relationDefinitionSvg dragState definition =
         equivalentFactSvg =
             case definition.equivalentFact of
                 Nothing ->
-                    factMissingSvg dragState
+                    factInsertHoleSvg dragState
                         |> sizedSvgFutureMap
                             (\dropped ->
                                 { dragged = Nothing, fact = Just dropped }
@@ -676,7 +676,7 @@ factShapeSvg fact =
                 { factInverseSvg =
                     case maybeInverseFact of
                         Nothing ->
-                            factMissingShapeSvg
+                            factInsertHoleShapeSvg
 
                         Just equivalentFact ->
                             factShapeSvg equivalentFact
@@ -730,7 +730,7 @@ factSvg dragState fact =
                 { factInverseSvg =
                     case maybeInverseFact of
                         Nothing ->
-                            factMissingSvg dragState
+                            factInsertHoleSvg dragState
                                 |> sizedSvgFutureMap
                                     (\dropped ->
                                         { dragged = Nothing, fact = Just (Not (Just dropped)) }
@@ -904,7 +904,7 @@ blockVerticalFactListSvg { dragState, elements, color, name, fact } =
         insertHoles =
             case elements of
                 [] ->
-                    factMissingSvg dragState
+                    factInsertHoleSvg dragState
                         |> sizedSvgFutureMap
                             (\futureUiState ->
                                 { dragged = Nothing
@@ -1156,7 +1156,7 @@ blockVerticalFactListShapeSvg config =
         branchesSvg =
             case config.elements of
                 [] ->
-                    Err factMissingShapeSvg
+                    Err factInsertHoleShapeSvg
 
                 branch0 :: branch1Up ->
                     (branch0 :: branch1Up)
@@ -1377,89 +1377,6 @@ factNotSvgWithInteractivity interactivity maybeInverseFact =
     }
 
 
-factMissingSvg : DragState -> SizedSvg FactUiState
-factMissingSvg dragState =
-    let
-        shapeSvg : SizedSvg future_
-        shapeSvg =
-            factMissingShapeSvg
-    in
-    { height = shapeSvg.height
-    , width = shapeSvg.width
-    , svg =
-        stackSvg
-            [ case dragState of
-                Nothing ->
-                    Web.Dom.modifierNone
-
-                Just dragged ->
-                    case dragged.thing of
-                        DraggedVariable _ ->
-                            Web.Dom.modifierNone
-
-                        DraggedValueLookup _ ->
-                            Web.Dom.modifierNone
-
-                        DraggedFact draggedFact ->
-                            Web.Dom.listenTo "pointerup"
-                                |> Web.Dom.modifierFutureMap
-                                    (\_ -> draggedFact)
-            ]
-            [ shapeSvg.svg ]
-    }
-
-
-factMissingShapeSvg : SizedSvg future_
-factMissingShapeSvg =
-    let
-        strokeWidth : Float
-        strokeWidth =
-            fontSize
-
-        fullWidth : Float
-        fullWidth =
-            strokeWidth
-                + missingTextSvg.width
-                + strokeWidth
-
-        missingTextSvg : SizedSvg future_
-        missingTextSvg =
-            unselectableTextSvg "drag a fact here"
-
-        fullHeight : Float
-        fullHeight =
-            missingTextSvg.height + strokeWidth
-
-        shapeSvg : SizedSvg future_
-        shapeSvg =
-            polygonSvg
-                [ svgAttributeFillUniform missingThingColor
-                ]
-                [ ( 0, strokeWidth )
-                , ( strokeWidth, 0 )
-                , ( fullWidth, 0 )
-                , ( fullWidth, fullHeight )
-                , ( strokeWidth, fullHeight )
-                , ( 0, fullHeight - strokeWidth )
-                ]
-    in
-    { height = shapeSvg.height
-    , width = shapeSvg.width
-    , svg =
-        stackSvg
-            []
-            [ stackSvg
-                [ svgAttributeTranslate
-                    { x = strokeWidth
-                    , y = fullHeight / 2
-                    }
-                ]
-                [ missingTextSvg.svg ]
-            , shapeSvg.svg
-            ]
-    }
-
-
 factInsertHoleSvg : DragState -> SizedSvg FactUiState
 factInsertHoleSvg dragState =
     let
@@ -1502,46 +1419,23 @@ factInsertHoleShapeSvg =
         fullWidth : Float
         fullWidth =
             strokeWidth
-                + missingTextSvg.width
+                + (strokeWidth * 5)
                 + strokeWidth
-
-        missingTextSvg : SizedSvg future_
-        missingTextSvg =
-            unselectableTextSvg "drag a fact here"
 
         fullHeight : Float
         fullHeight =
-            missingTextSvg.height + strokeWidth
-
-        shapeSvg : SizedSvg future_
-        shapeSvg =
-            polygonSvg
-                [ svgAttributeFillUniform missingThingColor
-                ]
-                [ ( 0, strokeWidth )
-                , ( strokeWidth, 0 )
-                , ( fullWidth, 0 )
-                , ( fullWidth, fullHeight )
-                , ( strokeWidth, fullHeight )
-                , ( 0, fullHeight - strokeWidth )
-                ]
+            strokeWidth + strokeWidth
     in
-    { height = shapeSvg.height
-    , width = shapeSvg.width
-    , svg =
-        stackSvg
-            []
-            [ stackSvg
-                [ svgAttributeTranslate
-                    { x = strokeWidth
-                    , y = fullHeight / 2
-                    }
-                , Web.Dom.style "visibility" "hidden"
-                ]
-                [ missingTextSvg.svg ]
-            , shapeSvg.svg
-            ]
-    }
+    polygonSvg
+        [ svgAttributeFillUniform missingThingColor
+        ]
+        [ ( 0, strokeWidth )
+        , ( strokeWidth, 0 )
+        , ( fullWidth, 0 )
+        , ( fullWidth, fullHeight )
+        , ( strokeWidth, fullHeight )
+        , ( 0, fullHeight - strokeWidth )
+        ]
 
 
 factEqualsSvgWithInteractivity :
@@ -2016,7 +1910,7 @@ variableShapeSvg =
 
 missingThingColor : Color
 missingThingColor =
-    Color.rgba 0 0 0 0.52
+    Color.rgba 0 0 0 0.6
 
 
 valueHoleSvg : DragState -> SizedSvg ValueUiState
@@ -2060,9 +1954,8 @@ valueHoleShapeSvg =
         strokeWidth =
             fontSize * 2
 
-        nameSvg : SizedSvg future_
-        nameSvg =
-            unselectableTextSvg "drag a value here"
+        fullWidth =
+            fontSize * 5 + strokeWidth
 
         shapeSvg : SizedSvg future_
         shapeSvg =
@@ -2073,25 +1966,14 @@ valueHoleShapeSvg =
                 , Web.Dom.attribute "stroke-linejoin" "round"
                 ]
                 [ ( strokeWidth / 2, strokeWidth / 2 )
-                , ( nameSvg.width + strokeWidth / 2, strokeWidth / 2 )
-                , ( nameSvg.width + strokeWidth / 2, fontSize )
+                , ( fullWidth - strokeWidth / 2, strokeWidth / 2 )
+                , ( fullWidth - strokeWidth / 2, fontSize )
                 , ( strokeWidth / 2, fontSize )
                 ]
     in
-    { width = nameSvg.width + strokeWidth
+    { width = fullWidth
     , height = fontSize + fontSize
-    , svg =
-        stackSvg
-            []
-            [ stackSvg
-                [ svgAttributeTranslate
-                    { x = strokeWidth / 2
-                    , y = strokeWidth / 2
-                    }
-                ]
-                [ nameSvg.svg ]
-            , shapeSvg.svg
-            ]
+    , svg = shapeSvg.svg
     }
 
 
