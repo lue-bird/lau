@@ -1,5 +1,3 @@
-> status: language evaluation isn't working just yet, studio is missing block sidebar, renaming, deleting, value lookup creating and evaluation frame
-
 Declarative, visual, minimal programming language.
 Reduces things you need to know and keep in your mind.
 
@@ -17,6 +15,18 @@ Reduces things you need to know and keep in your mind.
     no typeclass/trait/interface, no lambda, no local definition, no difference between types and code,
     no module, no class, no package, no namespace
 
+## status (TODO)
+
+  - language evaluation isn't working just yet
+  - studio
+      - unify any/all with and without drag versions by asking as arguments for conversion functions of transformed arguments
+      - block sidebar
+      - variable renaming
+      - deleting
+      - variable creating
+      - value lookup creating/editing
+      - relation definition creating
+      - evaluation frame
 
 ## web
 run locally with
