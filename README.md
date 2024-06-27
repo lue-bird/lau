@@ -57,3 +57,5 @@ npx vite
 
   - you don't need to worry about caching and many other optimizations due to laziness
   - uis written in lau where interacting with the outside world is simple and safe which you can even embed in lau code itself
+  - a story for exhaustive case handling (current workaround with giving value lookup might be a bit rough?)
+
