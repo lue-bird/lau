@@ -21,11 +21,16 @@ Reduces things you need to know and keep in your mind.
   - studio
       - unify any/all with and without drag versions by asking as arguments for conversion functions of transformed arguments
       - block sidebar
+          - fact blocks, empty value lookup
+          - variable creating
+          - relation definition creating
+          - existing variables, existing relation definitions
+      - fact/variable/value lookup deleting
+      - value lookup entry deleting
+      - relation definition deleting
+      - value lookup entry adding
       - variable renaming
-      - deleting
-      - variable creating
-      - value lookup creating/editing
-      - relation definition creating
+      - relation renaming
       - evaluation frame
 
 ## web
@@ -58,4 +63,4 @@ npx vite
   - you don't need to worry about caching and many other optimizations due to laziness
   - uis written in lau where interacting with the outside world is simple and safe which you can even embed in lau code itself
   - a story for exhaustive case handling (current workaround with giving value lookup might be a bit rough?)
-
+  - value lookup entry moving

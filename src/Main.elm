@@ -116,50 +116,75 @@ factUiStateToLau =
 main : Web.Program State
 main =
     Web.program
-        { initialState = app.initialState
-        , interface = app.interface
+        { initialState = initialState
+        , interface = interface
         , ports = { fromJs = fromJs, toJs = toJs }
         }
 
 
-app : { initialState : State, interface : State -> Web.Interface State }
-app =
-    { initialState =
-        { windowWidth = 1920
-        , windowHeight = 1080
-        , dragged = Nothing
-        , relationDefinitions =
-            FastDict.singleton "main"
-                { parameter = Variable "Result"
-                , equivalentFact =
-                    Any
-                        [ All
-                            [ Not
-                                (All
-                                    []
-                                    |> Just
-                                )
-                            , Equal
-                                { a = Variable "A"
-                                , b = Variable "B"
+initialState : State
+initialState =
+    { windowWidth = 1920
+    , windowHeight = 1080
+    , dragged = Nothing
+    , relationDefinitions =
+        FastDict.singleton "main"
+            { parameter =
+                ValueLookup
+                    [ { key = "state", value = Variable "state" }
+                    , { key = "interface", value = Variable "interface" }
+                    ]
+            , equivalentFact =
+                Any
+                    [ All
+                        [ Not
+                            (RelationUse
+                                { identifier = "is greater or equal to 0"
+                                , argument = Variable "state"
                                 }
-                            ]
-                        , All
-                            [ RelationUse
-                                { identifier = "list"
-                                , argument = Variable "B"
-                                }
-                            ]
+                                |> Just
+                            )
                         , Equal
-                            { a = Variable "A"
+                            { a = Variable "Interface"
+                            , b =
+                                ValueLookup
+                                    [ { key = "svg render"
+                                      , value =
+                                            ValueLookup
+                                                [ { key = "circle"
+                                                  , value =
+                                                        ValueLookup
+                                                            [ { key = "radius"
+                                                              , value =
+                                                                    ValueLookup
+                                                                        [ { key = "50", value = ValueLookup [] } ]
+                                                              }
+                                                            , { key = "y"
+                                                              , value =
+                                                                    ValueLookup
+                                                                        [ { key = "50", value = ValueLookup [] } ]
+                                                              }
+                                                            ]
+                                                  }
+                                                ]
+                                      }
+                                    ]
+                            }
+                        ]
+                    , All
+                        [ RelationUse
+                            { identifier = "is less than 10"
+                            , argument = Variable "state"
+                            }
+                        , Equal
+                            { a = Variable "interface"
                             , b = ValueHole
                             }
                         ]
-                        |> Just
-                }
-        , strayThings = []
-        }
-    , interface = interface
+                    ]
+                    |> Just
+            }
+    , strayThings = []
     }
 
 
@@ -1473,12 +1498,11 @@ factEqualsSvgWithInteractivity interactivity toEquate =
 
         fullHeight : Float
         fullHeight =
-            List.maximum
-                [ interactivity.valueASvg.height
-                , equalsTextSvg.height + strokeWidth
-                , interactivity.valueBSvg.height
-                ]
-                |> Maybe.withDefault 0
+            Basics.max
+                interactivity.valueASvg.height
+                (Basics.max (equalsTextSvg.height + strokeWidth)
+                    interactivity.valueBSvg.height
+                )
 
         shapeSvg : SizedSvg future
         shapeSvg =
@@ -1503,7 +1527,7 @@ factEqualsSvgWithInteractivity interactivity toEquate =
             , stackSvg
                 [ svgAttributeTranslate
                     { x = strokeWidth
-                    , y = 0
+                    , y = (fullHeight - interactivity.valueASvg.height) / 2
                     }
                 ]
                 [ interactivity.valueASvg.svg ]
@@ -1517,7 +1541,7 @@ factEqualsSvgWithInteractivity interactivity toEquate =
             , stackSvg
                 [ svgAttributeTranslate
                     { x = strokeWidth + interactivity.valueASvg.width + spaceWidth + equalsTextSvg.width + spaceWidth
-                    , y = 0
+                    , y = (fullHeight - interactivity.valueBSvg.height) / 2
                     }
                 ]
                 [ interactivity.valueBSvg.svg ]
@@ -1699,9 +1723,22 @@ valueSvg dragState =
                         )
 
 
-valueLookupShapeSvg : ValueLookupUiState -> SizedSvg future_
-valueLookupShapeSvg valueLookup =
-    Debug.todo ""
+valueLookupColor : Color
+valueLookupColor =
+    Color.rgb 0 0.1 0.21
+
+
+circleSvg : { radius : Float } -> List (Web.Dom.Modifier future) -> SizedSvg future
+circleSvg geometry modifiers =
+    { width = geometry.radius * 2
+    , height = geometry.radius * 2
+    , svg =
+        Web.Svg.element "circle"
+            (Web.Dom.attribute "r" (geometry.radius |> String.fromFloat)
+                :: modifiers
+            )
+            []
+    }
 
 
 valueLookupSvg :
@@ -1712,8 +1749,189 @@ valueLookupSvg :
             { dragged : DragState
             , valueLookup : Maybe ValueLookupUiState
             }
-valueLookupSvg valueLookup =
-    Debug.todo ""
+valueLookupSvg dragState valueLookup =
+    valueLookupSvgWithInteractivity
+        { listenToDragStart =
+            domListenToPointerDown
+                |> Web.Dom.modifierFutureMap
+                    (\pointerDownEventPosition ->
+                        case pointerDownEventPosition of
+                            Err _ ->
+                                { dragged = dragState
+                                , valueLookup = Just valueLookup
+                                }
+
+                            Ok pointer ->
+                                { dragged =
+                                    Just
+                                        { x = pointer.x
+                                        , y = pointer.y
+                                        , offsetX = -fontSize
+                                        , offsetY = -fontSize
+                                        , thing = DraggedValueLookup valueLookup
+                                        }
+                                , valueLookup = Nothing
+                                }
+                    )
+        }
+        (valueLookup
+            |> List.indexedMap
+                (\entryIndex entry ->
+                    { key = entry.key
+                    , value =
+                        valueSvg dragState entry.value
+                            |> sizedSvgFutureMap
+                                (\entryValueFuture ->
+                                    { dragged = entryValueFuture.dragged
+                                    , valueLookup =
+                                        valueLookup
+                                            |> List.LocalExtra.elementAtIndexAlter entryIndex
+                                                (\_ ->
+                                                    { key = entry.key
+                                                    , value = entryValueFuture.value
+                                                    }
+                                                )
+                                            |> Just
+                                    }
+                                )
+                    }
+                )
+        )
+
+
+valueLookupShapeSvg : ValueLookupUiState -> SizedSvg future_
+valueLookupShapeSvg valueLookup =
+    valueLookupSvgWithInteractivity
+        { listenToDragStart = Web.Dom.modifierNone }
+        (valueLookup
+            |> List.indexedMap
+                (\entryIndex entry ->
+                    { key = entry.key
+                    , value = valueShapeSvg entry.value
+                    }
+                )
+        )
+
+
+valueLookupSvgWithInteractivity :
+    { listenToDragStart : Web.Dom.Modifier future }
+    ->
+        List
+            { key : String
+            , value : SizedSvg future
+            }
+    -> SizedSvg future
+valueLookupSvgWithInteractivity interactivity valueLookup =
+    let
+        strokeWidth : Float
+        strokeWidth =
+            fontSize * 2
+    in
+    case valueLookup of
+        [] ->
+            circleSvg { radius = strokeWidth / 2 }
+                [ interactivity.listenToDragStart
+                , Web.Dom.attribute "fill" (valueLookupColor |> Color.toCssString)
+                , svgAttributeTranslate { x = strokeWidth / 2, y = strokeWidth / 2 }
+                ]
+
+        entry0 :: entry1Up ->
+            let
+                entrySvgs :
+                    { width : Float
+                    , height : Float
+                    , svgs :
+                        List
+                            { y : Float
+                            , width : Float
+                            , height : Float
+                            , svg : Web.Dom.Node future
+                            }
+                    }
+                entrySvgs =
+                    valueLookup
+                        |> List.indexedMap
+                            (\entryIndex entry ->
+                                let
+                                    entryValueSvg : SizedSvg future
+                                    entryValueSvg =
+                                        entry.value
+
+                                    entryNameSvg : SizedSvg future_
+                                    entryNameSvg =
+                                        unselectableTextSvg entry.key
+
+                                    entryFullHeight : Float
+                                    entryFullHeight =
+                                        Basics.max (entryNameSvg.height + fontSize)
+                                            entryValueSvg.height
+                                in
+                                { width = entryNameSvg.width + fontWidth + entryValueSvg.width
+                                , height = entryFullHeight
+                                , svg =
+                                    stackSvg []
+                                        [ stackSvg
+                                            [ svgAttributeTranslate
+                                                { x = 0
+                                                , y = fontSize / 2 + (entryFullHeight - fontSize) / 2
+                                                }
+                                            , Web.Dom.style "font-style" "italic"
+                                            ]
+                                            [ entryNameSvg.svg ]
+                                        , stackSvg
+                                            [ svgAttributeTranslate
+                                                { x = entryNameSvg.width + fontWidth
+                                                , y = 0
+                                                }
+                                            ]
+                                            [ entryValueSvg.svg ]
+                                        ]
+                                }
+                            )
+                        |> verticalSvg
+
+                shapeSvg : SizedSvg future
+                shapeSvg =
+                    polygonSvg
+                        [ interactivity.listenToDragStart
+                        , Web.Dom.attribute "fill" (valueLookupColor |> Color.toCssString)
+                        , Web.Dom.attribute "stroke" (valueLookupColor |> Color.toCssString)
+                        , Web.Dom.attribute "stroke-width" (strokeWidth |> String.fromFloat)
+                        , Web.Dom.attribute "stroke-linejoin" "round"
+                        ]
+                        [ ( strokeWidth / 2, strokeWidth / 2 )
+                        , ( fullWidth - strokeWidth / 2, strokeWidth / 2 )
+                        , ( fullWidth - strokeWidth / 2, fullHeight - strokeWidth / 2 )
+                        , ( strokeWidth / 2, fullHeight - strokeWidth / 2 )
+                        ]
+
+                fullHeight : Float
+                fullHeight =
+                    entrySvgs.height
+
+                fullWidth : Float
+                fullWidth =
+                    strokeWidth / 2 + entrySvgs.width
+            in
+            { width = fullWidth
+            , height = fullHeight
+            , svg =
+                stackSvg
+                    []
+                    [ shapeSvg.svg
+                    , entrySvgs.svgs
+                        |> List.map
+                            (\entryAsSvg ->
+                                entryAsSvg.svg
+                                    |> List.singleton
+                                    |> stackSvg [ svgAttributeTranslate { x = 0, y = entryAsSvg.y } ]
+                            )
+                        |> stackSvg
+                            [ svgAttributeTranslate
+                                { x = strokeWidth / 2, y = 0 }
+                            ]
+                    ]
+            }
 
 
 verticalSvg :
@@ -1859,6 +2077,11 @@ variableSvg dragState variableName =
     }
 
 
+variableColor : Color
+variableColor =
+    Color.rgb 0.3 0.1 0
+
+
 variableShapeSvg : String -> SizedSvg future_
 variableShapeSvg =
     \variableName ->
@@ -1867,10 +2090,6 @@ variableShapeSvg =
             strokeWidth =
                 fontSize * 2
 
-            color : Color
-            color =
-                Color.rgb 0 0.11 0.21
-
             nameSvg : SizedSvg future_
             nameSvg =
                 unselectableTextSvg variableName
@@ -1878,8 +2097,9 @@ variableShapeSvg =
             shapeSvg : SizedSvg future_
             shapeSvg =
                 polygonSvg
-                    [ svgAttributeFillUniform color
-                    , Web.Dom.attribute "stroke" (color |> Color.toCssString)
+                    [ svgAttributeFillUniform variableColor
+                    , Web.Dom.attribute "fill" (variableColor |> Color.toCssString)
+                    , Web.Dom.attribute "stroke" (variableColor |> Color.toCssString)
                     , Web.Dom.attribute "stroke-width" (strokeWidth |> String.fromFloat)
                     , Web.Dom.attribute "stroke-linejoin" "round"
                     ]
@@ -1908,7 +2128,7 @@ variableShapeSvg =
 
 missingThingColor : Color
 missingThingColor =
-    Color.rgba 0 0 0 0.6
+    Color.rgba 0 0 0 0.54
 
 
 valueHoleSvg : DragState -> SizedSvg ValueUiState
