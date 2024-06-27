@@ -671,14 +671,34 @@ factShapeSvg fact =
         Any branches ->
             factAnyShapeSvg branches
 
-        Not inverseFact ->
-            factNotShapeSvg inverseFact
+        Not maybeInverseFact ->
+            factNotSvgWithInteractivity
+                { factInverseSvg =
+                    case maybeInverseFact of
+                        Nothing ->
+                            factMissingShapeSvg
+
+                        Just equivalentFact ->
+                            factShapeSvg equivalentFact
+                , shapeListenModifier = Web.Dom.modifierNone
+                }
+                maybeInverseFact
 
         Equal toEquate ->
-            factEqualsShapeSvg toEquate
+            factEqualsSvgWithInteractivity
+                { valueASvg = toEquate.a |> valueShapeSvg
+                , valueBSvg = toEquate.b |> valueShapeSvg
+                , shapeEventListenModifier = Web.Dom.modifierNone
+                }
+                toEquate
 
         RelationUse relationUse ->
-            relationUseShapeSvg relationUse
+            relationUseSvgWithInteractivity
+                { shapeEventListenModifier = Web.Dom.modifierNone
+                , argumentAsSvg =
+                    relationUse.argument |> valueShapeSvg
+                }
+                relationUse
 
 
 factSvg :
@@ -705,32 +725,132 @@ factSvg dragState fact =
                         }
                     )
 
-        Not inverseFact ->
-            factNotSvg dragState inverseFact
-                |> sizedSvgFutureMap
-                    (\futureNot ->
-                        { dragged = futureNot.dragged
-                        , fact = Maybe.map Not futureNot.inverseFact
-                        }
-                    )
+        Not maybeInverseFact ->
+            factNotSvgWithInteractivity
+                { factInverseSvg =
+                    case maybeInverseFact of
+                        Nothing ->
+                            factMissingSvg dragState
+                                |> sizedSvgFutureMap
+                                    (\dropped ->
+                                        { dragged = Nothing, fact = Just (Not (Just dropped)) }
+                                    )
+
+                        Just equivalentFact ->
+                            factSvg dragState equivalentFact
+                                |> sizedSvgFutureMap
+                                    (\futureFactInverse ->
+                                        { fact = Just (Not futureFactInverse.fact)
+                                        , dragged = futureFactInverse.dragged
+                                        }
+                                    )
+                , shapeListenModifier =
+                    domListenToPointerDown
+                        |> Web.Dom.modifierFutureMap
+                            (\pointerDownEventPosition ->
+                                case pointerDownEventPosition of
+                                    Err _ ->
+                                        { dragged = dragState, fact = Just (Not maybeInverseFact) }
+
+                                    Ok pointer ->
+                                        { dragged =
+                                            Just
+                                                { x = pointer.x
+                                                , y = pointer.y
+                                                , offsetX = -fontSize
+                                                , offsetY = -fontSize
+                                                , thing = DraggedFact (Not maybeInverseFact)
+                                                }
+                                        , fact = Nothing
+                                        }
+                            )
+                }
+                maybeInverseFact
 
         Equal toEquate ->
-            factEqualsSvg dragState toEquate
-                |> sizedSvgFutureMap
-                    (\equal ->
-                        { dragged = equal.dragged
-                        , fact = Maybe.map Equal equal.values
-                        }
-                    )
+            factEqualsSvgWithInteractivity
+                { valueASvg =
+                    toEquate.a
+                        |> valueSvg dragState
+                        |> sizedSvgFutureMap
+                            (\futureA ->
+                                { dragged = futureA.dragged
+                                , fact = Just (Equal { a = futureA.value, b = toEquate.b })
+                                }
+                            )
+                , valueBSvg =
+                    toEquate.b
+                        |> valueSvg dragState
+                        |> sizedSvgFutureMap
+                            (\futureB ->
+                                { dragged = futureB.dragged
+                                , fact = Just (Equal { a = toEquate.a, b = futureB.value })
+                                }
+                            )
+                , shapeEventListenModifier =
+                    domListenToPointerDown
+                        |> Web.Dom.modifierFutureMap
+                            (\pointerDownEventPosition ->
+                                case pointerDownEventPosition of
+                                    Err _ ->
+                                        { dragged = dragState, fact = Just (Equal toEquate) }
+
+                                    Ok pointer ->
+                                        { dragged =
+                                            Just
+                                                { x = pointer.x
+                                                , y = pointer.y
+                                                , offsetX = -fontSize
+                                                , offsetY = -fontSize
+                                                , thing = DraggedFact (Equal toEquate)
+                                                }
+                                        , fact = Nothing
+                                        }
+                            )
+                }
+                toEquate
 
         RelationUse relationUse ->
-            relationUseSvg dragState relationUse
-                |> sizedSvgFutureMap
-                    (\relationUseFuture ->
-                        { dragged = relationUseFuture.dragged
-                        , fact = Maybe.map RelationUse relationUseFuture.relationUse
-                        }
-                    )
+            relationUseSvgWithInteractivity
+                { shapeEventListenModifier =
+                    domListenToPointerDown
+                        |> Web.Dom.modifierFutureMap
+                            (\pointerDownEventPosition ->
+                                case pointerDownEventPosition of
+                                    Err _ ->
+                                        { dragged = dragState
+                                        , fact = Just (RelationUse relationUse)
+                                        }
+
+                                    Ok pointer ->
+                                        { dragged =
+                                            Just
+                                                { x = pointer.x
+                                                , y = pointer.y
+                                                , offsetX = -fontSize
+                                                , offsetY = -fontSize
+                                                , thing = DraggedFact (RelationUse relationUse)
+                                                }
+                                        , fact = Nothing
+                                        }
+                            )
+                , argumentAsSvg =
+                    relationUse.argument
+                        |> valueSvg dragState
+                        |> sizedSvgFutureMap
+                            (\futureArgumentUiState ->
+                                { dragged = futureArgumentUiState.dragged
+                                , fact =
+                                    Just
+                                        (RelationUse
+                                            { identifier = relationUse.identifier
+                                            , argument = futureArgumentUiState.value
+                                            }
+                                        )
+                                }
+                            )
+                }
+                relationUse
 
 
 factAllShapeSvg : List FactUiState -> SizedSvg future_
@@ -1176,95 +1296,13 @@ factAnySvg dragState branches =
             )
 
 
-factNotShapeSvg : Maybe FactUiState -> SizedSvg future_
-factNotShapeSvg maybeInverseFact =
-    let
-        strokeWidth : Float
-        strokeWidth =
-            fontSize
-
-        sideWidth : Float
-        sideWidth =
-            strokeWidth
-
-        factInverseSvg : SizedSvg future_
-        factInverseSvg =
-            case maybeInverseFact of
-                Nothing ->
-                    factMissingShapeSvg
-
-                Just equivalentFact ->
-                    factShapeSvg equivalentFact
-
-        headerWidth : Float
-        headerWidth =
-            strokeWidth + notTextSvg.width + strokeWidth
-
-        fullWidth : Float
-        fullWidth =
-            headerWidth + factInverseSvg.width
-
-        notTextSvg : SizedSvg future_
-        notTextSvg =
-            unselectableTextSvg "not"
-
-        fullHeight : Float
-        fullHeight =
-            Basics.max (fontSize + strokeWidth)
-                factInverseSvg.height
-
-        shapeSvg : SizedSvg future_
-        shapeSvg =
-            polygonSvg
-                [ svgAttributeFillUniform (Color.rgb 0.2 0.04 0)
-                ]
-                (case maybeInverseFact of
-                    Nothing ->
-                        [ ( 0, strokeWidth )
-                        , ( strokeWidth, 0 )
-                        , ( fullWidth, 0 )
-                        , ( fullWidth, fullHeight )
-                        , ( strokeWidth, fullHeight )
-                        , ( 0, fullHeight - strokeWidth )
-                        ]
-
-                    Just _ ->
-                        [ ( 0, strokeWidth )
-                        , ( strokeWidth, 0 )
-                        , ( headerWidth + strokeWidth, 0 )
-                        , ( headerWidth, strokeWidth )
-                        , ( headerWidth, fullHeight - strokeWidth )
-                        , ( headerWidth + strokeWidth, fullHeight )
-                        , ( strokeWidth, fullHeight )
-                        , ( 0, fullHeight - strokeWidth )
-                        ]
-                )
-    in
-    { width = fullWidth
-    , height = fullHeight
-    , svg =
-        stackSvg
-            []
-            [ shapeSvg.svg
-            , stackSvg
-                [ svgAttributeTranslate
-                    { x = strokeWidth
-                    , y = (fontSize + strokeWidth) / 2
-                    }
-                ]
-                [ notTextSvg.svg ]
-            , stackSvg
-                [ svgAttributeTranslate { x = headerWidth, y = 0 } ]
-                [ factInverseSvg.svg ]
-            ]
+factNotSvgWithInteractivity :
+    { shapeListenModifier : Web.Dom.Modifier future
+    , factInverseSvg : SizedSvg future
     }
-
-
-factNotSvg :
-    DragState
     -> Maybe FactUiState
-    -> SizedSvg { dragged : DragState, inverseFact : Maybe (Maybe FactUiState) }
-factNotSvg dragState maybeInverseFact =
+    -> SizedSvg future
+factNotSvgWithInteractivity interactivity maybeInverseFact =
     let
         strokeWidth : Float
         strokeWidth =
@@ -1274,26 +1312,13 @@ factNotSvg dragState maybeInverseFact =
         sideWidth =
             strokeWidth
 
-        factInverseSvg : SizedSvg { dragged : DragState, fact : Maybe FactUiState }
-        factInverseSvg =
-            case maybeInverseFact of
-                Nothing ->
-                    factMissingSvg dragState
-                        |> sizedSvgFutureMap
-                            (\dropped ->
-                                { dragged = Nothing, fact = Just dropped }
-                            )
-
-                Just equivalentFact ->
-                    factSvg dragState equivalentFact
-
         headerWidth : Float
         headerWidth =
             strokeWidth + notTextSvg.width + strokeWidth
 
         fullWidth : Float
         fullWidth =
-            headerWidth + factInverseSvg.width
+            headerWidth + interactivity.factInverseSvg.width
 
         notTextSvg : SizedSvg future_
         notTextSvg =
@@ -1302,31 +1327,13 @@ factNotSvg dragState maybeInverseFact =
         fullHeight : Float
         fullHeight =
             Basics.max (fontSize + strokeWidth)
-                factInverseSvg.height
+                interactivity.factInverseSvg.height
 
-        shapeSvg : SizedSvg { dragged : DragState, inverseFact : Maybe (Maybe FactUiState) }
+        shapeSvg : SizedSvg future
         shapeSvg =
             polygonSvg
                 [ svgAttributeFillUniform (Color.rgb 0.2 0.04 0)
-                , domListenToPointerDown
-                    |> Web.Dom.modifierFutureMap
-                        (\pointerDownEventPosition ->
-                            case pointerDownEventPosition of
-                                Err _ ->
-                                    { dragged = dragState, inverseFact = Just maybeInverseFact }
-
-                                Ok pointer ->
-                                    { dragged =
-                                        Just
-                                            { x = pointer.x
-                                            , y = pointer.y
-                                            , offsetX = -fontSize
-                                            , offsetY = -fontSize
-                                            , thing = DraggedFact (Not maybeInverseFact)
-                                            }
-                                    , inverseFact = Nothing
-                                    }
-                        )
+                , interactivity.shapeListenModifier
                 ]
                 (case maybeInverseFact of
                     Nothing ->
@@ -1365,14 +1372,7 @@ factNotSvg dragState maybeInverseFact =
                 [ notTextSvg.svg ]
             , stackSvg
                 [ svgAttributeTranslate { x = headerWidth, y = 0 } ]
-                [ factInverseSvg.svg
-                    |> Web.Dom.futureMap
-                        (\futureFactInverse ->
-                            { inverseFact = Just futureFactInverse.fact
-                            , dragged = futureFactInverse.dragged
-                            }
-                        )
-                ]
+                [ interactivity.factInverseSvg.svg ]
             ]
     }
 
@@ -1544,107 +1544,14 @@ factInsertHoleShapeSvg =
     }
 
 
-factEqualsShapeSvg :
-    { a : ValueUiState, b : ValueUiState }
-    -> SizedSvg future_
-factEqualsShapeSvg toEquate =
-    let
-        strokeWidth : Float
-        strokeWidth =
-            fontSize
-
-        fullWidth : Float
-        fullWidth =
-            strokeWidth
-                + valueASvg.width
-                + spaceWidth
-                + equalsTextSvg.width
-                + spaceWidth
-                + valueBSvg.width
-                + strokeWidth
-
-        spaceWidth : Float
-        spaceWidth =
-            fontWidth / 2
-
-        color : Color
-        color =
-            Color.rgb 0.2 0.2 0
-
-        valueASvg : SizedSvg future_
-        valueASvg =
-            toEquate.a |> valueShapeSvg
-
-        valueBSvg : SizedSvg future_
-        valueBSvg =
-            toEquate.b |> valueShapeSvg
-
-        equalsTextSvg : SizedSvg future_
-        equalsTextSvg =
-            unselectableTextSvg "="
-
-        fullHeight : Float
-        fullHeight =
-            List.maximum
-                [ valueASvg.height
-                , equalsTextSvg.height + strokeWidth
-                , valueBSvg.height
-                ]
-                |> Maybe.withDefault 0
-
-        shapeSvg : SizedSvg future_
-        shapeSvg =
-            polygonSvg
-                [ svgAttributeFillUniform color
-                ]
-                [ ( 0, strokeWidth )
-                , ( strokeWidth, 0 )
-                , ( fullWidth, 0 )
-                , ( fullWidth, fullHeight )
-                , ( strokeWidth, fullHeight )
-                , ( 0, fullHeight - strokeWidth )
-                ]
-    in
-    { height = shapeSvg.height
-    , width = shapeSvg.width
-    , svg =
-        stackSvg
-            []
-            [ shapeSvg.svg
-            , stackSvg
-                [ svgAttributeTranslate
-                    { x = strokeWidth
-                    , y = 0
-                    }
-                ]
-                [ valueASvg.svg ]
-            , stackSvg
-                [ svgAttributeTranslate
-                    { x = strokeWidth + valueASvg.width + spaceWidth
-                    , y = fullHeight / 2
-                    }
-                ]
-                [ equalsTextSvg.svg ]
-            , stackSvg
-                [ svgAttributeTranslate
-                    { x = strokeWidth + valueASvg.width + spaceWidth + equalsTextSvg.width + spaceWidth
-                    , y = 0
-                    }
-                ]
-                [ valueBSvg.svg ]
-            ]
+factEqualsSvgWithInteractivity :
+    { shapeEventListenModifier : Web.Dom.Modifier future
+    , valueASvg : SizedSvg future
+    , valueBSvg : SizedSvg future
     }
-
-
-factEqualsSvg :
-    DragState
     -> { a : ValueUiState, b : ValueUiState }
-    ->
-        SizedSvg
-            { dragged : DragState
-            , values : Maybe { a : ValueUiState, b : ValueUiState }
-            }
-factEqualsSvg dragState toEquate =
+    -> SizedSvg future
+factEqualsSvgWithInteractivity interactivity toEquate =
     let
         strokeWidth : Float
         strokeWidth =
@@ -1653,11 +1560,11 @@ factEqualsSvg dragState toEquate =
         fullWidth : Float
         fullWidth =
             strokeWidth
-                + valueASvg.width
+                + interactivity.valueASvg.width
                 + spaceWidth
                 + equalsTextSvg.width
                 + spaceWidth
-                + valueBSvg.width
+                + interactivity.valueBSvg.width
                 + strokeWidth
 
         spaceWidth : Float
@@ -1668,14 +1575,6 @@ factEqualsSvg dragState toEquate =
         color =
             Color.rgb 0.2 0.2 0
 
-        valueASvg : SizedSvg { dragged : DragState, value : ValueUiState }
-        valueASvg =
-            toEquate.a |> valueSvg dragState
-
-        valueBSvg : SizedSvg { dragged : DragState, value : ValueUiState }
-        valueBSvg =
-            toEquate.b |> valueSvg dragState
-
         equalsTextSvg : SizedSvg future_
         equalsTextSvg =
             unselectableTextSvg "="
@@ -1683,39 +1582,17 @@ factEqualsSvg dragState toEquate =
         fullHeight : Float
         fullHeight =
             List.maximum
-                [ valueASvg.height
+                [ interactivity.valueASvg.height
                 , equalsTextSvg.height + strokeWidth
-                , valueBSvg.height
+                , interactivity.valueBSvg.height
                 ]
                 |> Maybe.withDefault 0
 
-        shapeSvg :
-            SizedSvg
-                { dragged : DragState
-                , values : Maybe { a : ValueUiState, b : ValueUiState }
-                }
+        shapeSvg : SizedSvg future
         shapeSvg =
             polygonSvg
                 [ svgAttributeFillUniform color
-                , domListenToPointerDown
-                    |> Web.Dom.modifierFutureMap
-                        (\pointerDownEventPosition ->
-                            case pointerDownEventPosition of
-                                Err _ ->
-                                    { dragged = dragState, values = Just toEquate }
-
-                                Ok pointer ->
-                                    { dragged =
-                                        Just
-                                            { x = pointer.x
-                                            , y = pointer.y
-                                            , offsetX = -fontSize
-                                            , offsetY = -fontSize
-                                            , thing = DraggedFact (Equal toEquate)
-                                            }
-                                    , values = Nothing
-                                    }
-                        )
+                , interactivity.shapeEventListenModifier
                 ]
                 [ ( 0, strokeWidth )
                 , ( strokeWidth, 0 )
@@ -1737,35 +1614,21 @@ factEqualsSvg dragState toEquate =
                     , y = 0
                     }
                 ]
-                [ valueASvg.svg
-                    |> Web.Dom.futureMap
-                        (\futureA ->
-                            { dragged = futureA.dragged
-                            , values = Just { a = futureA.value, b = toEquate.b }
-                            }
-                        )
-                ]
+                [ interactivity.valueASvg.svg ]
             , stackSvg
                 [ svgAttributeTranslate
-                    { x = strokeWidth + valueASvg.width + spaceWidth
+                    { x = strokeWidth + interactivity.valueASvg.width + spaceWidth
                     , y = fullHeight / 2
                     }
                 ]
                 [ equalsTextSvg.svg ]
             , stackSvg
                 [ svgAttributeTranslate
-                    { x = strokeWidth + valueASvg.width + spaceWidth + equalsTextSvg.width + spaceWidth
+                    { x = strokeWidth + interactivity.valueASvg.width + spaceWidth + equalsTextSvg.width + spaceWidth
                     , y = 0
                     }
                 ]
-                [ valueBSvg.svg
-                    |> Web.Dom.futureMap
-                        (\futureB ->
-                            { dragged = futureB.dragged
-                            , values = Just { a = toEquate.a, b = futureB.value }
-                            }
-                        )
-                ]
+                [ interactivity.valueBSvg.svg ]
             ]
     }
 
@@ -1810,10 +1673,13 @@ polygonSvg modifiers points =
     }
 
 
-relationUseShapeSvg :
-    { identifier : String, argument : ValueUiState }
-    -> SizedSvg future_
-relationUseShapeSvg relationUse =
+relationUseSvgWithInteractivity :
+    { shapeEventListenModifier : Web.Dom.Modifier future
+    , argumentAsSvg : SizedSvg future
+    }
+    -> { identifier : String, argument : ValueUiState }
+    -> SizedSvg future
+relationUseSvgWithInteractivity interactivity relationUse =
     let
         strokeWidth : Float
         strokeWidth =
@@ -1824,7 +1690,7 @@ relationUseShapeSvg relationUse =
             strokeWidth
                 + identifierTextSvg.width
                 + spaceWidth
-                + argumentAsSvg.width
+                + interactivity.argumentAsSvg.width
                 + strokeWidth
 
         spaceWidth : Float
@@ -1835,10 +1701,6 @@ relationUseShapeSvg relationUse =
         color =
             Color.rgb 0.2 0.2 0
 
-        argumentAsSvg : SizedSvg future_
-        argumentAsSvg =
-            relationUse.argument |> valueShapeSvg
-
         identifierTextSvg : SizedSvg future_
         identifierTextSvg =
             unselectableTextSvg relationUse.identifier
@@ -1846,12 +1708,13 @@ relationUseShapeSvg relationUse =
         fullHeight : Float
         fullHeight =
             Basics.max (identifierTextSvg.height + strokeWidth)
-                argumentAsSvg.height
+                interactivity.argumentAsSvg.height
 
-        shapeSvg : SizedSvg future_
+        shapeSvg : SizedSvg future
         shapeSvg =
             polygonSvg
                 [ svgAttributeFillUniform color
+                , interactivity.shapeEventListenModifier
                 ]
                 [ ( 0, strokeWidth )
                 , ( strokeWidth, 0 )
@@ -1880,125 +1743,9 @@ relationUseShapeSvg relationUse =
                     , y = 0
                     }
                 ]
-                [ argumentAsSvg.svg ]
+                [ interactivity.argumentAsSvg.svg ]
             ]
     }
-
-
-relationUseSvg :
-    DragState
-    -> { identifier : String, argument : ValueUiState }
-    ->
-        SizedSvg
-            { dragged : DragState
-            , relationUse : Maybe { identifier : String, argument : ValueUiState }
-            }
-relationUseSvg dragState =
-    \relationUse ->
-        let
-            strokeWidth : Float
-            strokeWidth =
-                fontSize
-
-            fullWidth : Float
-            fullWidth =
-                strokeWidth
-                    + identifierTextSvg.width
-                    + spaceWidth
-                    + argumentAsSvg.width
-                    + strokeWidth
-
-            spaceWidth : Float
-            spaceWidth =
-                fontWidth / 2
-
-            color : Color
-            color =
-                Color.rgb 0.2 0.2 0
-
-            argumentAsSvg : SizedSvg { dragged : DragState, value : ValueUiState }
-            argumentAsSvg =
-                relationUse.argument |> valueSvg dragState
-
-            identifierTextSvg : SizedSvg future_
-            identifierTextSvg =
-                unselectableTextSvg relationUse.identifier
-
-            fullHeight : Float
-            fullHeight =
-                Basics.max (identifierTextSvg.height + strokeWidth)
-                    argumentAsSvg.height
-
-            shapeSvg :
-                SizedSvg
-                    { dragged : DragState
-                    , relationUse : Maybe { identifier : String, argument : ValueUiState }
-                    }
-            shapeSvg =
-                polygonSvg
-                    [ svgAttributeFillUniform color
-                    , domListenToPointerDown
-                        |> Web.Dom.modifierFutureMap
-                            (\pointerDownEventPosition ->
-                                case pointerDownEventPosition of
-                                    Err _ ->
-                                        { dragged = dragState, relationUse = Just relationUse }
-
-                                    Ok pointer ->
-                                        { dragged =
-                                            Just
-                                                { x = pointer.x
-                                                , y = pointer.y
-                                                , offsetX = -fontSize
-                                                , offsetY = -fontSize
-                                                , thing = DraggedFact (RelationUse relationUse)
-                                                }
-                                        , relationUse = Nothing
-                                        }
-                            )
-                    ]
-                    [ ( 0, strokeWidth )
-                    , ( strokeWidth, 0 )
-                    , ( fullWidth, 0 )
-                    , ( fullWidth, fullHeight )
-                    , ( strokeWidth, fullHeight )
-                    , ( 0, fullHeight - strokeWidth )
-                    ]
-        in
-        { height = fullHeight
-        , width = fullWidth
-        , svg =
-            stackSvg
-                []
-                [ shapeSvg.svg
-                , stackSvg
-                    [ svgAttributeTranslate
-                        { x = strokeWidth
-                        , y = fullHeight / 2
-                        }
-                    ]
-                    [ identifierTextSvg.svg
-                    ]
-                , stackSvg
-                    [ svgAttributeTranslate
-                        { x = strokeWidth + identifierTextSvg.width + spaceWidth
-                        , y = 0
-                        }
-                    ]
-                    [ argumentAsSvg.svg
-                        |> Web.Dom.futureMap
-                            (\futureArgumentUiState ->
-                                { dragged = futureArgumentUiState.dragged
-                                , relationUse =
-                                    Just
-                                        { identifier = relationUse.identifier
-                                        , argument = futureArgumentUiState.value
-                                        }
-                                }
-                            )
-                    ]
-                ]
-        }
 
 
 valueShapeSvg : ValueUiState -> SizedSvg future_
