@@ -810,7 +810,7 @@ blockVerticalFactListSvg { dragState, elements, color, name, fact } =
                                     List.range 0 ((element0 :: element1Up) |> List.length)
                                         |> List.map
                                             (\insertIndex ->
-                                                factMissingSvg (Just dragged)
+                                                factInsertHoleSvg (Just dragged)
                                                     |> sizedSvgFutureMap
                                                         (\futureUiState ->
                                                             { dragged = Nothing
@@ -1453,6 +1453,90 @@ factMissingShapeSvg =
                     { x = strokeWidth
                     , y = fullHeight / 2
                     }
+                ]
+                [ missingTextSvg.svg ]
+            , shapeSvg.svg
+            ]
+    }
+
+
+factInsertHoleSvg : DragState -> SizedSvg FactUiState
+factInsertHoleSvg dragState =
+    let
+        shapeSvg : SizedSvg future_
+        shapeSvg =
+            factInsertHoleShapeSvg
+    in
+    { height = shapeSvg.height
+    , width = shapeSvg.width
+    , svg =
+        stackSvg
+            [ case dragState of
+                Nothing ->
+                    Web.Dom.modifierNone
+
+                Just dragged ->
+                    case dragged.thing of
+                        DraggedVariable _ ->
+                            Web.Dom.modifierNone
+
+                        DraggedValueLookup _ ->
+                            Web.Dom.modifierNone
+
+                        DraggedFact draggedFact ->
+                            Web.Dom.listenTo "pointerup"
+                                |> Web.Dom.modifierFutureMap
+                                    (\_ -> draggedFact)
+            ]
+            [ shapeSvg.svg ]
+    }
+
+
+factInsertHoleShapeSvg : SizedSvg future_
+factInsertHoleShapeSvg =
+    let
+        strokeWidth : Float
+        strokeWidth =
+            fontSize
+
+        fullWidth : Float
+        fullWidth =
+            strokeWidth
+                + missingTextSvg.width
+                + strokeWidth
+
+        missingTextSvg : SizedSvg future_
+        missingTextSvg =
+            unselectableTextSvg "drag a fact here"
+
+        fullHeight : Float
+        fullHeight =
+            missingTextSvg.height + strokeWidth
+
+        shapeSvg : SizedSvg future_
+        shapeSvg =
+            polygonSvg
+                [ svgAttributeFillUniform missingThingColor
+                ]
+                [ ( 0, strokeWidth )
+                , ( strokeWidth, 0 )
+                , ( fullWidth, 0 )
+                , ( fullWidth, fullHeight )
+                , ( strokeWidth, fullHeight )
+                , ( 0, fullHeight - strokeWidth )
+                ]
+    in
+    { height = shapeSvg.height
+    , width = shapeSvg.width
+    , svg =
+        stackSvg
+            []
+            [ stackSvg
+                [ svgAttributeTranslate
+                    { x = strokeWidth
+                    , y = fullHeight / 2
+                    }
+                , Web.Dom.style "visibility" "hidden"
                 ]
                 [ missingTextSvg.svg ]
             , shapeSvg.svg
