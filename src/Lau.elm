@@ -145,7 +145,7 @@ valueVariablesMap variableChange =
 factExpand : Project -> (FactWithVariableName ScopedVariableName -> List FactBranch)
 factExpand project =
     \fact ->
-        (case fact of
+        case fact of
             RelationUse relation ->
                 BranchValidRelation
                     { identifier = relation.identifier
@@ -182,14 +182,6 @@ factExpand project =
             Any branches ->
                 branches
                     |> List.concatMap (\orBranch -> orBranch |> factExpand project)
-        )
-            |> (\a ->
-                    let
-                        _ =
-                            Debug.log "fact expanded to" (a |> List.map factBranchToString |> String.join "\n")
-                    in
-                    a
-               )
 
 
 valueToValueLookup : ValueWithVariableName variableName -> Maybe (FastDict.Dict String (ValueWithVariableName variableName))
@@ -664,7 +656,15 @@ factBranchesExpandFully project =
                         determined
 
                     Err needsExpanding ->
-                        needsExpanding |> factBranchesExpandFully project
+                        needsExpanding
+                            |> (\a ->
+                                    let
+                                        _ =
+                                            Debug.log "all facts expanded to" (a |> List.map factBranchToString |> String.join "\n")
+                                    in
+                                    a
+                               )
+                            |> factBranchesExpandFully project
 
 
 factBranchToDetermined : FactBranch -> Maybe Lookup
