@@ -568,14 +568,12 @@ relationDefinitionSvg dragState definition =
 
         headerHeight : Float
         headerHeight =
-            (List.maximum
-                [ nameSvg.height
+            List.maximum
+                [ nameSvg.height + strokeWidth
                 , variableSvgHeight
-                , equalsTextSvg.height
+                , equalsTextSvg.height + strokeWidth
                 ]
                 |> Maybe.withDefault 0
-            )
-                + strokeWidth
 
         fullHeight : Float
         fullHeight =
@@ -613,14 +611,14 @@ relationDefinitionSvg dragState definition =
             , stackSvg
                 [ svgAttributeTranslate
                     { x = strokeWidth
-                    , y = (variableSvgHeight + strokeWidth) / 2
+                    , y = strokeWidth / 2 + (variableSvgHeight - nameSvg.height) / 2
                     }
                 ]
                 [ nameSvg.svg ]
             , stackSvg
                 [ svgAttributeTranslate
                     { x = strokeWidth + nameSvg.width + spaceWidth
-                    , y = strokeWidth / 2
+                    , y = 0
                     }
                 ]
                 [ parameterSvg.svg
@@ -637,7 +635,7 @@ relationDefinitionSvg dragState definition =
             , stackSvg
                 [ svgAttributeTranslate
                     { x = strokeWidth + nameSvg.width + spaceWidth + parameterSvg.width + spaceWidth
-                    , y = (variableSvgHeight + strokeWidth) / 2
+                    , y = strokeWidth / 2 + (variableSvgHeight - equalsTextSvg.height) / 2
                     }
                 ]
                 [ equalsTextSvg.svg ]
