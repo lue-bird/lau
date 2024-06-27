@@ -1422,17 +1422,13 @@ factMissingShapeSvg =
                 + missingTextSvg.width
                 + strokeWidth
 
-        spaceWidth : Float
-        spaceWidth =
-            fontWidth / 2
-
         missingTextSvg : SizedSvg future_
         missingTextSvg =
             unselectableTextSvg "drag a fact here"
 
         fullHeight : Float
         fullHeight =
-            missingTextSvg.height + strokeWidth + strokeWidth
+            missingTextSvg.height + strokeWidth
 
         shapeSvg : SizedSvg future_
         shapeSvg =
@@ -1505,14 +1501,12 @@ factEqualsShapeSvg toEquate =
 
         fullHeight : Float
         fullHeight =
-            (List.maximum
+            List.maximum
                 [ valueASvg.height
-                , equalsTextSvg.height
+                , equalsTextSvg.height + strokeWidth
                 , valueBSvg.height
                 ]
                 |> Maybe.withDefault 0
-            )
-                + strokeWidth
 
         shapeSvg : SizedSvg future_
         shapeSvg =
@@ -1536,7 +1530,7 @@ factEqualsShapeSvg toEquate =
             , stackSvg
                 [ svgAttributeTranslate
                     { x = strokeWidth
-                    , y = strokeWidth / 2
+                    , y = 0
                     }
                 ]
                 [ valueASvg.svg ]
@@ -1550,7 +1544,7 @@ factEqualsShapeSvg toEquate =
             , stackSvg
                 [ svgAttributeTranslate
                     { x = strokeWidth + valueASvg.width + spaceWidth + equalsTextSvg.width + spaceWidth
-                    , y = strokeWidth / 2
+                    , y = 0
                     }
                 ]
                 [ valueBSvg.svg ]
@@ -1604,14 +1598,12 @@ factEqualsSvg dragState toEquate =
 
         fullHeight : Float
         fullHeight =
-            (List.maximum
+            List.maximum
                 [ valueASvg.height
-                , equalsTextSvg.height
+                , equalsTextSvg.height + strokeWidth
                 , valueBSvg.height
                 ]
                 |> Maybe.withDefault 0
-            )
-                + strokeWidth
 
         shapeSvg :
             SizedSvg
@@ -1658,7 +1650,7 @@ factEqualsSvg dragState toEquate =
             , stackSvg
                 [ svgAttributeTranslate
                     { x = strokeWidth
-                    , y = strokeWidth / 2
+                    , y = 0
                     }
                 ]
                 [ valueASvg.svg
@@ -1679,7 +1671,7 @@ factEqualsSvg dragState toEquate =
             , stackSvg
                 [ svgAttributeTranslate
                     { x = strokeWidth + valueASvg.width + spaceWidth + equalsTextSvg.width + spaceWidth
-                    , y = strokeWidth / 2
+                    , y = 0
                     }
                 ]
                 [ valueBSvg.svg
@@ -1769,13 +1761,8 @@ relationUseShapeSvg relationUse =
 
         fullHeight : Float
         fullHeight =
-            (List.maximum
-                [ identifierTextSvg.height
-                , argumentAsSvg.height
-                ]
-                |> Maybe.withDefault 0
-            )
-                + strokeWidth
+            Basics.max (identifierTextSvg.height + strokeWidth)
+                argumentAsSvg.height
 
         shapeSvg : SizedSvg future_
         shapeSvg =
@@ -1806,7 +1793,7 @@ relationUseShapeSvg relationUse =
             , stackSvg
                 [ svgAttributeTranslate
                     { x = strokeWidth + identifierTextSvg.width + spaceWidth
-                    , y = strokeWidth / 2
+                    , y = 0
                     }
                 ]
                 [ argumentAsSvg.svg ]
@@ -1855,13 +1842,8 @@ relationUseSvg dragState =
 
             fullHeight : Float
             fullHeight =
-                (List.maximum
-                    [ identifierTextSvg.height
-                    , argumentAsSvg.height
-                    ]
-                    |> Maybe.withDefault 0
-                )
-                    + strokeWidth
+                Basics.max (identifierTextSvg.height + strokeWidth)
+                    argumentAsSvg.height
 
             shapeSvg :
                 SizedSvg
@@ -1916,7 +1898,7 @@ relationUseSvg dragState =
                 , stackSvg
                     [ svgAttributeTranslate
                         { x = strokeWidth + identifierTextSvg.width + spaceWidth
-                        , y = strokeWidth / 2
+                        , y = 0
                         }
                     ]
                     [ argumentAsSvg.svg
