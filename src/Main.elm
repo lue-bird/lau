@@ -685,6 +685,40 @@ relationDefinitionSvg dragState definition =
     }
 
 
+factNotShapeSvg : Maybe FactUiState -> SizedSvg future_
+factNotShapeSvg maybeFactInverse =
+    factNotSvgWithInteractivity
+        { maybeFactInverse = maybeFactInverse
+        , factInverseSvg =
+            case maybeFactInverse of
+                Nothing ->
+                    factInsertHoleShapeSvg
+
+                Just equivalentFact ->
+                    factShapeSvg equivalentFact
+        , shapeListenModifier = Web.Dom.modifierNone
+        }
+
+
+equalsShapeSvg : { a : ValueUiState, b : ValueUiState } -> SizedSvg future_
+equalsShapeSvg toEquate =
+    factEqualsSvgWithInteractivity
+        { valueASvg = toEquate.a |> valueShapeSvg
+        , valueBSvg = toEquate.b |> valueShapeSvg
+        , shapeEventListenModifier = Web.Dom.modifierNone
+        }
+
+
+relationUseShapeSvg : { identifier : String, argument : ValueUiState } -> SizedSvg future_
+relationUseShapeSvg relationUse =
+    relationUseSvgWithInteractivity
+        { shapeEventListenModifier = Web.Dom.modifierNone
+        , identifier = relationUse.identifier
+        , argumentAsSvg =
+            relationUse.argument |> valueShapeSvg
+        }
+
+
 factShapeSvg : FactUiState -> SizedSvg future_
 factShapeSvg fact =
     case fact of
@@ -694,34 +728,14 @@ factShapeSvg fact =
         Any branches ->
             factAnyShapeSvg branches
 
-        Not maybeInverseFact ->
-            factNotSvgWithInteractivity
-                { factInverseSvg =
-                    case maybeInverseFact of
-                        Nothing ->
-                            factInsertHoleShapeSvg
-
-                        Just equivalentFact ->
-                            factShapeSvg equivalentFact
-                , shapeListenModifier = Web.Dom.modifierNone
-                }
-                maybeInverseFact
+        Not maybeFactInverse ->
+            factNotShapeSvg maybeFactInverse
 
         Equal toEquate ->
-            factEqualsSvgWithInteractivity
-                { valueASvg = toEquate.a |> valueShapeSvg
-                , valueBSvg = toEquate.b |> valueShapeSvg
-                , shapeEventListenModifier = Web.Dom.modifierNone
-                }
-                toEquate
+            equalsShapeSvg toEquate
 
         RelationUse relationUse ->
-            relationUseSvgWithInteractivity
-                { shapeEventListenModifier = Web.Dom.modifierNone
-                , argumentAsSvg =
-                    relationUse.argument |> valueShapeSvg
-                }
-                relationUse
+            relationUseShapeSvg relationUse
 
 
 factSvg :
@@ -748,10 +762,10 @@ factSvg dragState fact =
                         }
                     )
 
-        Not maybeInverseFact ->
+        Not maybeFactInverse ->
             factNotSvgWithInteractivity
                 { factInverseSvg =
-                    case maybeInverseFact of
+                    case maybeFactInverse of
                         Nothing ->
                             factInsertHoleSvg dragState
                                 |> sizedSvgFutureMap
@@ -767,13 +781,14 @@ factSvg dragState fact =
                                         , dragged = futureFactInverse.dragged
                                         }
                                     )
+                , maybeFactInverse = maybeFactInverse
                 , shapeListenModifier =
                     domListenToPointerDown
                         |> Web.Dom.modifierFutureMap
                             (\pointerDownEventPosition ->
                                 case pointerDownEventPosition of
                                     Err _ ->
-                                        { dragged = dragState, fact = Just (Not maybeInverseFact) }
+                                        { dragged = dragState, fact = Just (Not maybeFactInverse) }
 
                                     Ok pointer ->
                                         { dragged =
@@ -782,13 +797,12 @@ factSvg dragState fact =
                                                 , y = pointer.y
                                                 , offsetX = -fontSize
                                                 , offsetY = -fontSize
-                                                , thing = DraggedFact (Not maybeInverseFact)
+                                                , thing = DraggedFact (Not maybeFactInverse)
                                                 }
                                         , fact = Nothing
                                         }
                             )
                 }
-                maybeInverseFact
 
         Equal toEquate ->
             factEqualsSvgWithInteractivity
@@ -831,7 +845,6 @@ factSvg dragState fact =
                                         }
                             )
                 }
-                toEquate
 
         RelationUse relationUse ->
             relationUseSvgWithInteractivity
@@ -857,6 +870,7 @@ factSvg dragState fact =
                                         , fact = Nothing
                                         }
                             )
+                , identifier = relationUse.identifier
                 , argumentAsSvg =
                     relationUse.argument
                         |> valueSvg dragState
@@ -873,7 +887,6 @@ factSvg dragState fact =
                                 }
                             )
                 }
-                relationUse
 
 
 factAllShapeSvg : List FactUiState -> SizedSvg future_
@@ -1322,10 +1335,10 @@ factAnySvg dragState branches =
 factNotSvgWithInteractivity :
     { shapeListenModifier : Web.Dom.Modifier future
     , factInverseSvg : SizedSvg future
+    , maybeFactInverse : Maybe FactUiState
     }
-    -> Maybe FactUiState
     -> SizedSvg future
-factNotSvgWithInteractivity interactivity maybeInverseFact =
+factNotSvgWithInteractivity parts =
     let
         strokeWidth : Float
         strokeWidth =
@@ -1341,7 +1354,7 @@ factNotSvgWithInteractivity interactivity maybeInverseFact =
 
         fullWidth : Float
         fullWidth =
-            headerWidth + interactivity.factInverseSvg.width
+            headerWidth + parts.factInverseSvg.width
 
         notTextSvg : SizedSvg future_
         notTextSvg =
@@ -1350,15 +1363,15 @@ factNotSvgWithInteractivity interactivity maybeInverseFact =
         fullHeight : Float
         fullHeight =
             Basics.max (fontSize + strokeWidth)
-                interactivity.factInverseSvg.height
+                parts.factInverseSvg.height
 
         shapeSvg : SizedSvg future
         shapeSvg =
             polygonSvg
                 [ svgAttributeFillUniform (Color.rgb 0.2 0.04 0)
-                , interactivity.shapeListenModifier
+                , parts.shapeListenModifier
                 ]
-                (case maybeInverseFact of
+                (case parts.maybeFactInverse of
                     Nothing ->
                         [ ( 0, strokeWidth )
                         , ( strokeWidth, 0 )
@@ -1395,7 +1408,7 @@ factNotSvgWithInteractivity interactivity maybeInverseFact =
                 [ notTextSvg.svg ]
             , stackSvg
                 [ svgAttributeTranslate { x = headerWidth, y = 0 } ]
-                [ interactivity.factInverseSvg.svg ]
+                [ parts.factInverseSvg.svg ]
             ]
     }
 
@@ -1466,9 +1479,8 @@ factEqualsSvgWithInteractivity :
     , valueASvg : SizedSvg future
     , valueBSvg : SizedSvg future
     }
-    -> { a : ValueUiState, b : ValueUiState }
     -> SizedSvg future
-factEqualsSvgWithInteractivity interactivity toEquate =
+factEqualsSvgWithInteractivity parts =
     let
         strokeWidth : Float
         strokeWidth =
@@ -1477,11 +1489,11 @@ factEqualsSvgWithInteractivity interactivity toEquate =
         fullWidth : Float
         fullWidth =
             strokeWidth
-                + interactivity.valueASvg.width
+                + parts.valueASvg.width
                 + spaceWidth
                 + equalsTextSvg.width
                 + spaceWidth
-                + interactivity.valueBSvg.width
+                + parts.valueBSvg.width
                 + strokeWidth
 
         spaceWidth : Float
@@ -1499,16 +1511,16 @@ factEqualsSvgWithInteractivity interactivity toEquate =
         fullHeight : Float
         fullHeight =
             Basics.max
-                interactivity.valueASvg.height
+                parts.valueASvg.height
                 (Basics.max (equalsTextSvg.height + strokeWidth)
-                    interactivity.valueBSvg.height
+                    parts.valueBSvg.height
                 )
 
         shapeSvg : SizedSvg future
         shapeSvg =
             polygonSvg
                 [ svgAttributeFillUniform color
-                , interactivity.shapeEventListenModifier
+                , parts.shapeEventListenModifier
                 ]
                 [ ( 0, strokeWidth )
                 , ( strokeWidth, 0 )
@@ -1527,24 +1539,24 @@ factEqualsSvgWithInteractivity interactivity toEquate =
             , stackSvg
                 [ svgAttributeTranslate
                     { x = strokeWidth
-                    , y = (fullHeight - interactivity.valueASvg.height) / 2
+                    , y = (fullHeight - parts.valueASvg.height) / 2
                     }
                 ]
-                [ interactivity.valueASvg.svg ]
+                [ parts.valueASvg.svg ]
             , stackSvg
                 [ svgAttributeTranslate
-                    { x = strokeWidth + interactivity.valueASvg.width + spaceWidth
+                    { x = strokeWidth + parts.valueASvg.width + spaceWidth
                     , y = fullHeight / 2
                     }
                 ]
                 [ equalsTextSvg.svg ]
             , stackSvg
                 [ svgAttributeTranslate
-                    { x = strokeWidth + interactivity.valueASvg.width + spaceWidth + equalsTextSvg.width + spaceWidth
-                    , y = (fullHeight - interactivity.valueBSvg.height) / 2
+                    { x = strokeWidth + parts.valueASvg.width + spaceWidth + equalsTextSvg.width + spaceWidth
+                    , y = (fullHeight - parts.valueBSvg.height) / 2
                     }
                 ]
-                [ interactivity.valueBSvg.svg ]
+                [ parts.valueBSvg.svg ]
             ]
     }
 
@@ -1591,11 +1603,11 @@ polygonSvg modifiers points =
 
 relationUseSvgWithInteractivity :
     { shapeEventListenModifier : Web.Dom.Modifier future
+    , identifier : String
     , argumentAsSvg : SizedSvg future
     }
-    -> { identifier : String, argument : ValueUiState }
     -> SizedSvg future
-relationUseSvgWithInteractivity interactivity relationUse =
+relationUseSvgWithInteractivity parts =
     let
         strokeWidth : Float
         strokeWidth =
@@ -1606,7 +1618,7 @@ relationUseSvgWithInteractivity interactivity relationUse =
             strokeWidth
                 + identifierTextSvg.width
                 + spaceWidth
-                + interactivity.argumentAsSvg.width
+                + parts.argumentAsSvg.width
                 + strokeWidth
 
         spaceWidth : Float
@@ -1619,18 +1631,18 @@ relationUseSvgWithInteractivity interactivity relationUse =
 
         identifierTextSvg : SizedSvg future_
         identifierTextSvg =
-            unselectableTextSvg relationUse.identifier
+            unselectableTextSvg parts.identifier
 
         fullHeight : Float
         fullHeight =
             Basics.max (identifierTextSvg.height + strokeWidth)
-                interactivity.argumentAsSvg.height
+                parts.argumentAsSvg.height
 
         shapeSvg : SizedSvg future
         shapeSvg =
             polygonSvg
                 [ svgAttributeFillUniform color
-                , interactivity.shapeEventListenModifier
+                , parts.shapeEventListenModifier
                 ]
                 [ ( 0, strokeWidth )
                 , ( strokeWidth, 0 )
@@ -1659,7 +1671,7 @@ relationUseSvgWithInteractivity interactivity relationUse =
                     , y = 0
                     }
                 ]
-                [ interactivity.argumentAsSvg.svg ]
+                [ parts.argumentAsSvg.svg ]
             ]
     }
 
