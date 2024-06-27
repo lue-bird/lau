@@ -1448,14 +1448,14 @@ factMissingShapeSvg =
     , svg =
         stackSvg
             []
-            [ shapeSvg.svg
-            , stackSvg
+            [ stackSvg
                 [ svgAttributeTranslate
                     { x = strokeWidth
                     , y = fullHeight / 2
                     }
                 ]
                 [ missingTextSvg.svg ]
+            , shapeSvg.svg
             ]
     }
 
@@ -2185,7 +2185,7 @@ variableShapeSvg =
 
 missingThingColor : Color
 missingThingColor =
-    Color.rgba 0 0 0 0.48
+    Color.rgba 0 0 0 0.52
 
 
 valueHoleSvg : DragState -> SizedSvg ValueUiState
@@ -2252,14 +2252,14 @@ valueHoleShapeSvg =
     , svg =
         stackSvg
             []
-            [ shapeSvg.svg
-            , stackSvg
+            [ stackSvg
                 [ svgAttributeTranslate
                     { x = strokeWidth / 2
                     , y = strokeWidth / 2
                     }
                 ]
                 [ nameSvg.svg ]
+            , shapeSvg.svg
             ]
     }
 
