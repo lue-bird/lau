@@ -735,109 +735,11 @@ factSvg dragState fact =
 
 factAllShapeSvg : List FactUiState -> SizedSvg future_
 factAllShapeSvg parts =
-    let
-        strokeWidth : Float
-        strokeWidth =
-            fontSize
-
-        sideWidth : Float
-        sideWidth =
-            strokeWidth
-
-        partsSvg :
-            { width : Float
-            , height : Float
-            , svgs : List { y : Float, svg : Web.Dom.Node future_ }
-            }
-        partsSvg =
-            case parts of
-                [] ->
-                    { width = 0
-                    , height = strokeWidth + strokeWidth
-                    , svgs = []
-                    }
-
-                part0 :: part1Up ->
-                    (part0 :: part1Up)
-                        |> List.map factShapeSvg
-                        |> verticalSvg
-
-        fullWidth : Float
-        fullWidth =
-            sideWidth
-                + Basics.max partsSvg.width (strokeWidth + allStringSvg.width + strokeWidth)
-
-        allStringSvg : SizedSvg future_
-        allStringSvg =
-            unselectableTextSvg "all"
-
-        headerHeight : Float
-        headerHeight =
-            fontSize + strokeWidth
-
-        fullHeight : Float
-        fullHeight =
-            headerHeight + partsSvg.height + sideWidth
-
-        shapeSvg : SizedSvg future_
-        shapeSvg =
-            polygonSvg
-                [ svgAttributeFillUniform (Color.rgb 0 0.14 0)
-                ]
-                ([ ( sideWidth + strokeWidth, headerHeight )
-                 , ( fullWidth, headerHeight )
-                 , ( fullWidth, 0 )
-                 , ( strokeWidth, 0 )
-                 , ( 0, strokeWidth )
-                 , ( 0, headerHeight + partsSvg.height )
-                 , ( strokeWidth, fullHeight )
-                 , ( fullWidth, fullHeight )
-                 , ( fullWidth, headerHeight + partsSvg.height )
-                 , ( sideWidth + strokeWidth, headerHeight + partsSvg.height )
-                 , ( sideWidth, headerHeight + partsSvg.height - strokeWidth )
-                 ]
-                    ++ (partsSvg.svgs
-                            |> List.drop 1
-                            |> List.concatMap
-                                (\partAsSvg ->
-                                    [ ( sideWidth, headerHeight + partAsSvg.y - strokeWidth )
-                                    , ( sideWidth + strokeWidth, headerHeight + partAsSvg.y )
-                                    , ( sideWidth, headerHeight + partAsSvg.y + strokeWidth )
-                                    ]
-                                )
-                       )
-                    ++ [ ( sideWidth, headerHeight + strokeWidth )
-                       ]
-                )
-    in
-    { width = shapeSvg.width
-    , height = shapeSvg.height
-    , svg =
-        stackSvg
-            []
-            [ shapeSvg.svg
-            , stackSvg
-                [ svgAttributeTranslate
-                    { x = sideWidth
-                    , y = strokeWidth
-                    }
-                ]
-                [ allStringSvg.svg ]
-            , stackSvg
-                [ svgAttributeTranslate { x = sideWidth, y = headerHeight } ]
-                [ partsSvg.svgs
-                    |> List.map
-                        (\partAsSvg ->
-                            partAsSvg.svg
-                                |> List.singleton
-                                |> stackSvg
-                                    [ svgAttributeTranslate { x = 0, y = partAsSvg.y }
-                                    ]
-                        )
-                    |> stackSvg []
-                ]
-            ]
-    }
+    blockVerticalFactListShapeSvg
+        { name = "all"
+        , color = Color.rgb 0 0.14 0
+        , elements = parts
+        }
 
 
 factAllSvg :
@@ -845,6 +747,30 @@ factAllSvg :
     -> List FactUiState
     -> SizedSvg { dragged : DragState, parts : Maybe (List FactUiState) }
 factAllSvg dragState parts =
+    blockVerticalFactListSvg
+        { name = "all"
+        , fact = All parts
+        , dragState = dragState
+        , elements = parts
+        , color = Color.rgb 0 0.14 0
+        }
+        |> sizedSvgFutureMap
+            (\future ->
+                { dragged = future.dragged
+                , parts = future.elements
+                }
+            )
+
+
+blockVerticalFactListSvg :
+    { dragState : DragState
+    , elements : List FactUiState
+    , color : Color
+    , name : String
+    , fact : FactUiState
+    }
+    -> SizedSvg { dragged : DragState, elements : Maybe (List FactUiState) }
+blockVerticalFactListSvg { dragState, elements, color, name, fact } =
     let
         strokeWidth : Float
         strokeWidth =
@@ -854,54 +780,96 @@ factAllSvg dragState parts =
         sideWidth =
             strokeWidth
 
-        partsSvg :
+        insertHoles : List (SizedSvg { dragged : DragState, elements : List FactUiState })
+        insertHoles =
+            case elements of
+                [] ->
+                    factMissingSvg dragState
+                        |> sizedSvgFutureMap
+                            (\futureUiState ->
+                                { dragged = Nothing
+                                , elements = [ futureUiState ]
+                                }
+                            )
+                        |> List.singleton
+
+                element0 :: element1Up ->
+                    case dragState of
+                        Nothing ->
+                            []
+
+                        Just dragged ->
+                            case dragged.thing of
+                                DraggedValueLookup _ ->
+                                    []
+
+                                DraggedVariable _ ->
+                                    []
+
+                                DraggedFact _ ->
+                                    List.range 0 ((element0 :: element1Up) |> List.length)
+                                        |> List.map
+                                            (\insertIndex ->
+                                                factMissingSvg (Just dragged)
+                                                    |> sizedSvgFutureMap
+                                                        (\futureUiState ->
+                                                            { dragged = Nothing
+                                                            , elements =
+                                                                (element0 :: element1Up)
+                                                                    |> List.LocalExtra.insertElementAtIndex insertIndex
+                                                                        futureUiState
+                                                            }
+                                                        )
+                                            )
+
+        elementsAndInsertHolesSvg :
             { width : Float
             , height : Float
             , svgs :
                 List
                     { y : Float
-                    , svg : Web.Dom.Node { dragged : DragState, parts : List FactUiState }
+                    , width : Float
+                    , height : Float
+                    , svg : Web.Dom.Node { dragged : DragState, elements : List FactUiState }
                     }
             }
-        partsSvg =
-            case parts of
-                [] ->
-                    { width = 0
-                    , height = strokeWidth + strokeWidth
-                    , svgs = []
-                    }
-
-                part0 :: part1Up ->
-                    (part0 :: part1Up)
+        elementsAndInsertHolesSvg =
+            let
+                elementsSvgs : List (SizedSvg { dragged : DragState, elements : List FactUiState })
+                elementsSvgs =
+                    elements
                         |> List.indexedMap
                             (\partIndex part ->
                                 factSvg dragState part
                                     |> sizedSvgFutureMap
                                         (\partFutureUiState ->
                                             { dragged = partFutureUiState.dragged
-                                            , parts =
+                                            , elements =
                                                 case partFutureUiState.fact of
                                                     Nothing ->
-                                                        (part0 :: part1Up)
+                                                        elements
                                                             |> List.LocalExtra.removeElementAtIndex partIndex
 
                                                     Just futurePartFact ->
-                                                        (part0 :: part1Up)
+                                                        elements
                                                             |> List.LocalExtra.elementAtIndexAlter partIndex
                                                                 (\_ -> futurePartFact)
                                             }
                                         )
                             )
-                        |> verticalSvg
+            in
+            List.LocalExtra.interweave insertHoles elementsSvgs
+                |> verticalSvg
 
         fullWidth : Float
         fullWidth =
             sideWidth
-                + Basics.max partsSvg.width (strokeWidth + allStringSvg.width + strokeWidth)
+                + Basics.max elementsAndInsertHolesSvg.width
+                    (strokeWidth + allStringSvg.width + strokeWidth)
 
         allStringSvg : SizedSvg future_
         allStringSvg =
-            unselectableTextSvg "all"
+            unselectableTextSvg name
 
         headerHeight : Float
         headerHeight =
@@ -909,18 +877,18 @@ factAllSvg dragState parts =
 
         fullHeight : Float
         fullHeight =
-            headerHeight + partsSvg.height + sideWidth
+            headerHeight + elementsAndInsertHolesSvg.height + sideWidth
 
-        shapeSvg : SizedSvg { dragged : DragState, parts : Maybe (List FactUiState) }
+        shapeSvg : SizedSvg { dragged : DragState, elements : Maybe (List FactUiState) }
         shapeSvg =
             polygonSvg
-                [ svgAttributeFillUniform (Color.rgb 0 0.14 0)
+                [ svgAttributeFillUniform color
                 , domListenToPointerDown
                     |> Web.Dom.modifierFutureMap
                         (\pointerDownEventPosition ->
                             case pointerDownEventPosition of
                                 Err _ ->
-                                    { dragged = dragState, parts = Just parts }
+                                    { dragged = dragState, elements = Just elements }
 
                                 Ok pointer ->
                                     { dragged =
@@ -929,9 +897,9 @@ factAllSvg dragState parts =
                                             , y = pointer.y
                                             , offsetX = -fontSize
                                             , offsetY = -fontSize
-                                            , thing = DraggedFact (All parts)
+                                            , thing = DraggedFact fact
                                             }
-                                    , parts = Nothing
+                                    , elements = Nothing
                                     }
                         )
                 ]
@@ -940,25 +908,47 @@ factAllSvg dragState parts =
                  , ( fullWidth, 0 )
                  , ( strokeWidth, 0 )
                  , ( 0, strokeWidth )
-                 , ( 0, headerHeight + partsSvg.height )
+                 , ( 0, headerHeight + elementsAndInsertHolesSvg.height )
                  , ( strokeWidth, fullHeight )
                  , ( fullWidth, fullHeight )
-                 , ( fullWidth, headerHeight + partsSvg.height )
-                 , ( sideWidth + strokeWidth, headerHeight + partsSvg.height )
-                 , ( sideWidth, headerHeight + partsSvg.height - strokeWidth )
+                 , ( fullWidth, headerHeight + elementsAndInsertHolesSvg.height )
+                 , ( sideWidth + strokeWidth, headerHeight + elementsAndInsertHolesSvg.height )
                  ]
-                    ++ (partsSvg.svgs
-                            |> List.drop 1
-                            |> List.concatMap
-                                (\partAsSvg ->
-                                    [ ( sideWidth, headerHeight + partAsSvg.y - strokeWidth )
-                                    , ( sideWidth + strokeWidth, headerHeight + partAsSvg.y )
-                                    , ( sideWidth, headerHeight + partAsSvg.y + strokeWidth )
-                                    ]
-                                )
+                    ++ (case insertHoles of
+                            _ :: _ ->
+                                elementsAndInsertHolesSvg.svgs
+                                    |> List.indexedMap Tuple.pair
+                                    |> List.concatMap
+                                        (\( index, sub ) ->
+                                            if (index |> Basics.remainderBy 2) == 1 then
+                                                [ ( sideWidth + strokeWidth, headerHeight + sub.y )
+                                                , ( sideWidth, headerHeight + sub.y + strokeWidth )
+                                                , ( sideWidth, headerHeight + sub.y + sub.height - strokeWidth )
+                                                , ( sideWidth + strokeWidth, headerHeight + sub.y + sub.height )
+                                                ]
+
+                                            else
+                                                [ ( sideWidth + sub.width, headerHeight + sub.y )
+                                                , ( sideWidth + sub.width, headerHeight + sub.y + sub.height )
+                                                ]
+                                        )
+                                    |> List.reverse
+
+                            _ ->
+                                ( sideWidth, headerHeight + elementsAndInsertHolesSvg.height - strokeWidth )
+                                    :: (elementsAndInsertHolesSvg.svgs
+                                            |> List.drop 1
+                                            |> List.concatMap
+                                                (\partAsSvg ->
+                                                    [ ( sideWidth, headerHeight + partAsSvg.y - strokeWidth )
+                                                    , ( sideWidth + strokeWidth, headerHeight + partAsSvg.y )
+                                                    , ( sideWidth, headerHeight + partAsSvg.y + strokeWidth )
+                                                    ]
+                                                )
+                                       )
+                                    ++ [ ( sideWidth, headerHeight + strokeWidth )
+                                       ]
                        )
-                    ++ [ ( sideWidth, headerHeight + strokeWidth )
-                       ]
                 )
     in
     { width = shapeSvg.width
@@ -976,18 +966,18 @@ factAllSvg dragState parts =
                 [ allStringSvg.svg ]
             , stackSvg
                 [ svgAttributeTranslate { x = sideWidth, y = headerHeight } ]
-                [ partsSvg.svgs
+                [ elementsAndInsertHolesSvg.svgs
                     |> List.map
-                        (\partAsSvg ->
-                            partAsSvg
+                        (\elementAsSvg ->
+                            elementAsSvg
                                 |> .svg
                                 |> Web.Dom.futureMap
                                     (\future ->
-                                        { dragged = future.dragged, parts = Just future.parts }
+                                        { dragged = future.dragged, elements = Just future.elements }
                                     )
                                 |> List.singleton
                                 |> stackSvg
-                                    [ svgAttributeTranslate { x = 0, y = partAsSvg.y }
+                                    [ svgAttributeTranslate { x = 0, y = elementAsSvg.y }
                                     ]
                         )
                     |> stackSvg []
@@ -1010,6 +1000,17 @@ sizedSvgFutureMap futureChange =
 
 factAnyShapeSvg : List FactUiState -> SizedSvg future_
 factAnyShapeSvg branches =
+    blockVerticalFactListShapeSvg
+        { name = "any"
+        , color = Color.rgb 0.2 0 0.2
+        , elements = branches
+        }
+
+
+blockVerticalFactListShapeSvg :
+    { elements : List FactUiState, name : String, color : Color }
+    -> SizedSvg future_
+blockVerticalFactListShapeSvg config =
     let
         strokeWidth : Float
         strokeWidth =
@@ -1020,72 +1021,103 @@ factAnyShapeSvg branches =
             strokeWidth
 
         branchesSvg :
-            { width : Float
-            , height : Float
-            , svgs :
-                List { y : Float, svg : Web.Dom.Node future_ }
-            }
+            Result
+                (SizedSvg future_)
+                { width : Float
+                , height : Float
+                , svgs :
+                    List
+                        { y : Float
+                        , width : Float
+                        , height : Float
+                        , svg : Web.Dom.Node future_
+                        }
+                }
         branchesSvg =
-            case branches of
+            case config.elements of
                 [] ->
-                    { width = 0
-                    , height = strokeWidth + strokeWidth
-                    , svgs = []
-                    }
+                    Err factMissingShapeSvg
 
                 branch0 :: branch1Up ->
                     (branch0 :: branch1Up)
                         |> List.map factShapeSvg
                         |> verticalSvg
-
-        fullWidth : Float
-        fullWidth =
-            sideWidth
-                + Basics.max
-                    branchesSvg.width
-                    (strokeWidth + anyTextSvg.width + strokeWidth)
+                        |> Ok
 
         anyTextSvg : SizedSvg future_
         anyTextSvg =
-            unselectableTextSvg "any"
+            unselectableTextSvg config.name
 
         headerHeight : Float
         headerHeight =
             fontSize + strokeWidth
 
+        fullWidth : Float
+        fullWidth =
+            sideWidth
+                + Basics.max
+                    contentWidth
+                    (strokeWidth + anyTextSvg.width + strokeWidth)
+
+        contentWidth : Float
+        contentWidth =
+            case branchesSvg of
+                Ok branchesSvgs ->
+                    branchesSvgs.width
+
+                Err missing ->
+                    missing.width
+
+        contentHeight : Float
+        contentHeight =
+            case branchesSvg of
+                Ok branchesSvgs ->
+                    branchesSvgs.height
+
+                Err missing ->
+                    missing.height
+
         fullHeight : Float
         fullHeight =
-            headerHeight + branchesSvg.height + sideWidth
+            headerHeight
+                + contentHeight
+                + sideWidth
 
         shapeSvg : SizedSvg future_
         shapeSvg =
             polygonSvg
-                [ svgAttributeFillUniform (Color.rgb 0.2 0 0.2)
+                [ svgAttributeFillUniform config.color
                 ]
-                ([ ( sideWidth + strokeWidth, headerHeight )
-                 , ( fullWidth, headerHeight )
+                ([ ( fullWidth, headerHeight )
                  , ( fullWidth, 0 )
                  , ( sideWidth, 0 )
                  , ( 0, strokeWidth )
-                 , ( 0, headerHeight + branchesSvg.height )
+                 , ( 0, headerHeight + contentHeight )
                  , ( sideWidth, fullHeight )
                  , ( fullWidth, fullHeight )
-                 , ( fullWidth, headerHeight + branchesSvg.height )
-                 , ( sideWidth + strokeWidth, headerHeight + branchesSvg.height )
-                 , ( sideWidth, headerHeight + branchesSvg.height - strokeWidth )
+                 , ( fullWidth, headerHeight + contentHeight )
                  ]
-                    ++ (branchesSvg.svgs
-                            |> List.drop 1
-                            |> List.concatMap
-                                (\branchAsSvg ->
-                                    [ ( sideWidth, headerHeight + branchAsSvg.y - strokeWidth )
-                                    , ( sideWidth + strokeWidth, headerHeight + branchAsSvg.y )
-                                    , ( sideWidth, headerHeight + branchAsSvg.y + strokeWidth )
-                                    ]
-                                )
+                    ++ (case branchesSvg of
+                            Err _ ->
+                                []
+
+                            Ok branchesSvgs ->
+                                ( sideWidth + strokeWidth, headerHeight + contentHeight )
+                                    :: ( sideWidth, headerHeight + contentHeight - strokeWidth )
+                                    :: (branchesSvgs.svgs
+                                            |> List.drop 1
+                                            |> List.concatMap
+                                                (\branchAsSvg ->
+                                                    [ ( sideWidth, headerHeight + branchAsSvg.y - strokeWidth )
+                                                    , ( sideWidth + strokeWidth, headerHeight + branchAsSvg.y )
+                                                    , ( sideWidth, headerHeight + branchAsSvg.y + strokeWidth )
+                                                    ]
+                                                )
+                                       )
+                                    ++ [ ( sideWidth, headerHeight + strokeWidth )
+                                       , ( sideWidth + strokeWidth, headerHeight )
+                                       ]
                        )
-                    ++ [ ( sideWidth, headerHeight + strokeWidth )
-                       ]
                 )
     in
     { width = shapeSvg.width
@@ -1103,16 +1135,22 @@ factAnyShapeSvg branches =
                 [ anyTextSvg.svg ]
             , stackSvg
                 [ svgAttributeTranslate { x = sideWidth, y = headerHeight } ]
-                [ branchesSvg.svgs
-                    |> List.map
-                        (\branchAsSvg ->
-                            branchAsSvg.svg
-                                |> List.singleton
-                                |> stackSvg
-                                    [ svgAttributeTranslate { x = 0, y = branchAsSvg.y }
-                                    ]
-                        )
-                    |> stackSvg []
+                [ case branchesSvg of
+                    Err missing ->
+                        missing.svg
+
+                    Ok branchesSvgs ->
+                        branchesSvgs
+                            |> .svgs
+                            |> List.map
+                                (\branchAsSvg ->
+                                    branchAsSvg.svg
+                                        |> List.singleton
+                                        |> stackSvg
+                                            [ svgAttributeTranslate { x = 0, y = branchAsSvg.y }
+                                            ]
+                                )
+                            |> stackSvg []
                 ]
             ]
     }
@@ -1123,160 +1161,19 @@ factAnySvg :
     -> List FactUiState
     -> SizedSvg { dragged : DragState, branches : Maybe (List FactUiState) }
 factAnySvg dragState branches =
-    let
-        strokeWidth : Float
-        strokeWidth =
-            fontSize
-
-        sideWidth : Float
-        sideWidth =
-            strokeWidth
-
-        branchesSvg :
-            { width : Float
-            , height : Float
-            , svgs :
-                List
-                    { y : Float
-                    , svg : Web.Dom.Node { dragged : DragState, branches : List FactUiState }
-                    }
-            }
-        branchesSvg =
-            case branches of
-                [] ->
-                    { width = 0
-                    , height = strokeWidth + strokeWidth
-                    , svgs = []
-                    }
-
-                branch0 :: branch1Up ->
-                    (branch0 :: branch1Up)
-                        |> List.indexedMap
-                            (\branchIndex branch ->
-                                branch
-                                    |> factSvg dragState
-                                    |> sizedSvgFutureMap
-                                        (\branchFutureUiState ->
-                                            { dragged = branchFutureUiState.dragged
-                                            , branches =
-                                                case branchFutureUiState.fact of
-                                                    Nothing ->
-                                                        (branch0 :: branch1Up)
-                                                            |> List.LocalExtra.removeElementAtIndex branchIndex
-
-                                                    Just futureBranchFact ->
-                                                        (branch0 :: branch1Up)
-                                                            |> List.LocalExtra.elementAtIndexAlter branchIndex
-                                                                (\_ -> futureBranchFact)
-                                            }
-                                        )
-                            )
-                        |> verticalSvg
-
-        fullWidth : Float
-        fullWidth =
-            sideWidth
-                + Basics.max
-                    branchesSvg.width
-                    (strokeWidth + anyTextSvg.width + strokeWidth)
-
-        anyTextSvg : SizedSvg future_
-        anyTextSvg =
-            unselectableTextSvg "any"
-
-        headerHeight : Float
-        headerHeight =
-            fontSize + strokeWidth
-
-        fullHeight : Float
-        fullHeight =
-            headerHeight + branchesSvg.height + sideWidth
-
-        shapeSvg : SizedSvg { dragged : DragState, branches : Maybe (List FactUiState) }
-        shapeSvg =
-            polygonSvg
-                [ svgAttributeFillUniform (Color.rgb 0.2 0 0.2)
-                , domListenToPointerDown
-                    |> Web.Dom.modifierFutureMap
-                        (\pointerDownEventPosition ->
-                            case pointerDownEventPosition of
-                                Err _ ->
-                                    { dragged = dragState, branches = Just branches }
-
-                                Ok pointer ->
-                                    { dragged =
-                                        Just
-                                            { x = pointer.x
-                                            , y = pointer.y
-                                            , offsetX = -fontSize
-                                            , offsetY = -fontSize
-                                            , thing = DraggedFact (Any branches)
-                                            }
-                                    , branches = Nothing
-                                    }
-                        )
-                ]
-                ([ ( sideWidth + strokeWidth, headerHeight )
-                 , ( fullWidth, headerHeight )
-                 , ( fullWidth, 0 )
-                 , ( sideWidth, 0 )
-                 , ( 0, strokeWidth )
-                 , ( 0, headerHeight + branchesSvg.height )
-                 , ( sideWidth, fullHeight )
-                 , ( fullWidth, fullHeight )
-                 , ( fullWidth, headerHeight + branchesSvg.height )
-                 , ( sideWidth + strokeWidth, headerHeight + branchesSvg.height )
-                 , ( sideWidth, headerHeight + branchesSvg.height - strokeWidth )
-                 ]
-                    ++ (branchesSvg.svgs
-                            |> List.drop 1
-                            |> List.concatMap
-                                (\branchAsSvg ->
-                                    [ ( sideWidth, headerHeight + branchAsSvg.y - strokeWidth )
-                                    , ( sideWidth + strokeWidth, headerHeight + branchAsSvg.y )
-                                    , ( sideWidth, headerHeight + branchAsSvg.y + strokeWidth )
-                                    ]
-                                )
-                       )
-                    ++ [ ( sideWidth, headerHeight + strokeWidth )
-                       ]
-                )
-    in
-    { width = shapeSvg.width
-    , height = shapeSvg.height
-    , svg =
-        stackSvg
-            []
-            [ shapeSvg.svg
-            , stackSvg
-                [ svgAttributeTranslate
-                    { x = sideWidth
-                    , y = (fontSize + strokeWidth) / 2
-                    }
-                ]
-                [ anyTextSvg.svg ]
-            , stackSvg
-                [ svgAttributeTranslate { x = sideWidth, y = headerHeight } ]
-                [ branchesSvg.svgs
-                    |> List.map
-                        (\branchAsSvg ->
-                            branchAsSvg
-                                |> .svg
-                                |> Web.Dom.futureMap
-                                    (\branchFuture ->
-                                        { dragged = branchFuture.dragged
-                                        , branches = Just branchFuture.branches
-                                        }
-                                    )
-                                |> List.singleton
-                                |> stackSvg
-                                    [ svgAttributeTranslate { x = 0, y = branchAsSvg.y }
-                                    ]
-                        )
-                    |> stackSvg []
-                ]
-            ]
-    }
+    blockVerticalFactListSvg
+        { name = "any"
+        , fact = Any branches
+        , dragState = dragState
+        , elements = branches
+        , color = Color.rgb 0.2 0 0.2
+        }
+        |> sizedSvgFutureMap
+            (\future ->
+                { dragged = future.dragged
+                , branches = future.elements
+                }
+            )
 
 
 factNotShapeSvg : Maybe FactUiState -> SizedSvg future_
@@ -1316,19 +1213,32 @@ factNotShapeSvg maybeInverseFact =
             Basics.max (fontSize + strokeWidth)
                 factInverseSvg.height
 
+        shapeSvg : SizedSvg future_
         shapeSvg =
             polygonSvg
                 [ svgAttributeFillUniform (Color.rgb 0.2 0.04 0)
                 ]
-                [ ( 0, strokeWidth )
-                , ( strokeWidth, 0 )
-                , ( headerWidth + strokeWidth, 0 )
-                , ( headerWidth, strokeWidth )
-                , ( headerWidth, fullHeight - strokeWidth )
-                , ( headerWidth + strokeWidth, fullHeight )
-                , ( strokeWidth, fullHeight )
-                , ( 0, fullHeight - strokeWidth )
-                ]
+                (case maybeInverseFact of
+                    Nothing ->
+                        [ ( 0, strokeWidth )
+                        , ( strokeWidth, 0 )
+                        , ( fullWidth, 0 )
+                        , ( fullWidth, fullHeight )
+                        , ( strokeWidth, fullHeight )
+                        , ( 0, fullHeight - strokeWidth )
+                        ]
+
+                    Just _ ->
+                        [ ( 0, strokeWidth )
+                        , ( strokeWidth, 0 )
+                        , ( headerWidth + strokeWidth, 0 )
+                        , ( headerWidth, strokeWidth )
+                        , ( headerWidth, fullHeight - strokeWidth )
+                        , ( headerWidth + strokeWidth, fullHeight )
+                        , ( strokeWidth, fullHeight )
+                        , ( 0, fullHeight - strokeWidth )
+                        ]
+                )
     in
     { width = fullWidth
     , height = fullHeight
@@ -2106,7 +2016,13 @@ verticalSvg :
     ->
         { width : Float
         , height : Float
-        , svgs : List { y : Float, svg : Web.Dom.Node future }
+        , svgs :
+            List
+                { y : Float
+                , width : Float
+                , height : Float
+                , svg : Web.Dom.Node future
+                }
         }
 verticalSvg =
     \facts ->
@@ -2114,7 +2030,13 @@ verticalSvg =
             factsAsSvgs :
                 { combinedHeight : Float
                 , widthMaximum : Float
-                , svgsReverse : List { y : Float, svg : Web.Dom.Node future }
+                , svgsReverse :
+                    List
+                        { y : Float
+                        , width : Float
+                        , height : Float
+                        , svg : Web.Dom.Node future
+                        }
                 }
             factsAsSvgs =
                 facts
@@ -2125,7 +2047,11 @@ verticalSvg =
                             , svgsReverse =
                                 soFar.svgsReverse
                                     |> (::)
-                                        { svg = asSvg.svg, y = soFar.combinedHeight }
+                                        { svg = asSvg.svg
+                                        , width = asSvg.width
+                                        , height = asSvg.height
+                                        , y = soFar.combinedHeight
+                                        }
                             }
                         )
                         { combinedHeight = 0

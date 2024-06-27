@@ -1,4 +1,19 @@
-module List.LocalExtra exposing (allJustMap, elementAtIndexAlter, firstJustMap, oneOfEach, removeElementAtIndex)
+module List.LocalExtra exposing (allJustMap, elementAtIndexAlter, firstJustMap, insertElementAtIndex, interweave, oneOfEach, removeElementAtIndex)
+
+
+interweave : List a -> List a -> List a
+interweave aList bList =
+    case aList of
+        [] ->
+            bList
+
+        aHead :: aTail ->
+            case bList of
+                [] ->
+                    aHead :: aTail
+
+                bHead :: bTail ->
+                    aHead :: bHead :: interweave aTail bTail
 
 
 elementAtIndexAlter : Int -> (a -> a) -> (List a -> List a)
@@ -33,6 +48,26 @@ removeElementAtIndex indexToRemove =
 
                         indexToRemoveAtLeast1 ->
                             head :: (tail |> removeElementAtIndex (indexToRemoveAtLeast1 - 1))
+
+
+insertElementAtIndex : Int -> a -> (List a -> List a)
+insertElementAtIndex indexToInsertAt elementToInsert =
+    \list ->
+        if indexToInsertAt <= -1 then
+            list
+
+        else
+            case indexToInsertAt of
+                0 ->
+                    elementToInsert :: list
+
+                indexToInsertAtAtLeast1 ->
+                    case list of
+                        [] ->
+                            []
+
+                        head :: tail ->
+                            head :: (tail |> insertElementAtIndex (indexToInsertAtAtLeast1 - 1) elementToInsert)
 
 
 allJustMap : (a -> Maybe b) -> (List a -> Maybe (List b))
