@@ -1011,8 +1011,6 @@ blockVerticalFactListSvg config =
             , svgs :
                 List
                     { y : Float
-                    , width : Float
-                    , height : Float
                     , svg : Web.Dom.Node { dragged : DragState, elements : List FactUiState }
                     }
             }
@@ -1188,8 +1186,6 @@ blockVerticalFactListShapeSvg config =
                 , svgs :
                     List
                         { y : Float
-                        , width : Float
-                        , height : Float
                         , svg : Web.Dom.Node future_
                         }
                 }
@@ -1848,8 +1844,6 @@ valueLookupSvgWithInteractivity interactivity valueLookup =
                     , svgs :
                         List
                             { y : Float
-                            , width : Float
-                            , height : Float
                             , svg : Web.Dom.Node future
                             }
                     }
@@ -1940,8 +1934,6 @@ verticalSvg :
         , svgs :
             List
                 { y : Float
-                , width : Float
-                , height : Float
                 , svg : Web.Dom.Node future
                 }
         }
@@ -1954,8 +1946,6 @@ verticalSvg =
                 , svgsReverse :
                     List
                         { y : Float
-                        , width : Float
-                        , height : Float
                         , svg : Web.Dom.Node future
                         }
                 }
@@ -1969,8 +1959,6 @@ verticalSvg =
                                 soFar.svgsReverse
                                     |> (::)
                                         { svg = asSvg.svg
-                                        , width = asSvg.width
-                                        , height = asSvg.height
                                         , y = soFar.combinedHeight
                                         }
                             }
