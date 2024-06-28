@@ -956,7 +956,7 @@ blockVerticalFactListSvg :
     , fact : FactUiState
     }
     -> SizedSvg { dragged : DragState, elements : Maybe (List FactUiState) }
-blockVerticalFactListSvg { dragState, elements, color, name, fact } =
+blockVerticalFactListSvg config =
     let
         strokeWidth : Float
         strokeWidth =
@@ -968,9 +968,9 @@ blockVerticalFactListSvg { dragState, elements, color, name, fact } =
 
         insertHoles : List (SizedSvg { dragged : DragState, elements : List FactUiState })
         insertHoles =
-            case elements of
+            case config.elements of
                 [] ->
-                    factInsertHoleSvg color dragState
+                    factInsertHoleSvg config.color config.dragState
                         |> sizedSvgFutureMap
                             (\futureUiState ->
                                 { dragged = Nothing
@@ -980,7 +980,7 @@ blockVerticalFactListSvg { dragState, elements, color, name, fact } =
                         |> List.singleton
 
                 element0 :: element1Up ->
-                    case dragState of
+                    case config.dragState of
                         Nothing ->
                             []
 
@@ -993,7 +993,7 @@ blockVerticalFactListSvg { dragState, elements, color, name, fact } =
                                     List.range 0 ((element0 :: element1Up) |> List.length)
                                         |> List.map
                                             (\insertIndex ->
-                                                factInsertHoleSvg color (Just dragged)
+                                                factInsertHoleSvg config.color (Just dragged)
                                                     |> sizedSvgFutureMap
                                                         (\futureUiState ->
                                                             { dragged = Nothing
@@ -1020,21 +1020,21 @@ blockVerticalFactListSvg { dragState, elements, color, name, fact } =
             let
                 elementsSvgs : List (SizedSvg { dragged : DragState, elements : List FactUiState })
                 elementsSvgs =
-                    elements
+                    config.elements
                         |> List.indexedMap
                             (\partIndex part ->
-                                factSvg dragState part
+                                factSvg config.dragState part
                                     |> sizedSvgFutureMap
                                         (\partFutureUiState ->
                                             { dragged = partFutureUiState.dragged
                                             , elements =
                                                 case partFutureUiState.fact of
                                                     Nothing ->
-                                                        elements
+                                                        config.elements
                                                             |> List.LocalExtra.removeElementAtIndex partIndex
 
                                                     Just futurePartFact ->
-                                                        elements
+                                                        config.elements
                                                             |> List.LocalExtra.elementAtIndexAlter partIndex
                                                                 (\_ -> futurePartFact)
                                             }
@@ -1048,11 +1048,11 @@ blockVerticalFactListSvg { dragState, elements, color, name, fact } =
         fullWidth =
             sideWidth
                 + Basics.max elementsAndInsertHolesSvg.width
-                    (strokeWidth + allStringSvg.width + strokeWidth)
+                    (strokeWidth + blockNameStringSvg.width + strokeWidth)
 
-        allStringSvg : SizedSvg future_
-        allStringSvg =
-            unselectableTextSvg name
+        blockNameStringSvg : SizedSvg future_
+        blockNameStringSvg =
+            unselectableTextSvg config.name
 
         headerHeight : Float
         headerHeight =
@@ -1065,13 +1065,13 @@ blockVerticalFactListSvg { dragState, elements, color, name, fact } =
         shapeSvg : SizedSvg { dragged : DragState, elements : Maybe (List FactUiState) }
         shapeSvg =
             svgPolygon
-                [ domModifierFillUniform color
+                [ domModifierFillUniform config.color
                 , domListenToPointerDown
                     |> Web.Dom.modifierFutureMap
                         (\pointerDownEventPosition ->
                             case pointerDownEventPosition of
                                 Err _ ->
-                                    { dragged = dragState, elements = Just elements }
+                                    { dragged = config.dragState, elements = Just config.elements }
 
                                 Ok pointer ->
                                     { dragged =
@@ -1080,7 +1080,7 @@ blockVerticalFactListSvg { dragState, elements, color, name, fact } =
                                             , y = pointer.y
                                             , offsetX = -fontSize
                                             , offsetY = -fontSize
-                                            , thing = DraggedFact fact
+                                            , thing = DraggedFact config.fact
                                             }
                                     , elements = Nothing
                                     }
@@ -1123,7 +1123,7 @@ blockVerticalFactListSvg { dragState, elements, color, name, fact } =
                     , y = strokeWidth
                     }
                 ]
-                [ allStringSvg.svg ]
+                [ blockNameStringSvg.svg ]
             , stackSvg
                 [ svgAttributeTranslate { x = sideWidth, y = headerHeight } ]
                 [ elementsAndInsertHolesSvg.svgs
