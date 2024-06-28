@@ -763,6 +763,53 @@ valueOrHoleShapeSvg backgroundColor maybeValue =
             valueHoleShapeSvg backgroundColor
 
 
+verticalFactListPolygonPoints :
+    { headerWidth : Float
+    , headerHeight : Float
+    , sideWidth : Float
+    , strokeWidth : Float
+    }
+    -> { height : Float, width : Float, svgs : List { element_ | y : Float } }
+    -> List ( Float, Float )
+verticalFactListPolygonPoints { headerWidth, headerHeight, sideWidth, strokeWidth } elementsSvg =
+    let
+        fullHeight : Float
+        fullHeight =
+            headerHeight
+                + elementsSvg.height
+                + sideWidth
+
+        fullWidth : Float
+        fullWidth =
+            sideWidth
+                + Basics.max elementsSvg.width headerWidth
+    in
+    [ ( fullWidth, headerHeight )
+    , ( fullWidth, 0 )
+    , ( sideWidth, 0 )
+    , ( 0, strokeWidth )
+    , ( 0, headerHeight + elementsSvg.height )
+    , ( sideWidth, fullHeight )
+    , ( fullWidth, fullHeight )
+    , ( fullWidth, headerHeight + elementsSvg.height )
+    , ( sideWidth + strokeWidth, headerHeight + elementsSvg.height )
+    , ( sideWidth, headerHeight + elementsSvg.height - strokeWidth )
+    ]
+        ++ (elementsSvg.svgs
+                |> List.drop 1
+                |> List.concatMap
+                    (\branchAsSvg ->
+                        [ ( sideWidth, headerHeight + branchAsSvg.y - strokeWidth )
+                        , ( sideWidth + strokeWidth, headerHeight + branchAsSvg.y )
+                        , ( sideWidth, headerHeight + branchAsSvg.y + strokeWidth )
+                        ]
+                    )
+           )
+        ++ [ ( sideWidth, headerHeight + strokeWidth )
+           , ( sideWidth + strokeWidth, headerHeight )
+           ]
+
+
 factSvg :
     DragState
     -> FactUiState
@@ -966,6 +1013,18 @@ blockVerticalFactListSvg config =
         sideWidth =
             strokeWidth
 
+        blockNameStringSvg : SizedSvg future_
+        blockNameStringSvg =
+            unselectableTextSvg config.name
+
+        headerWidth : Float
+        headerWidth =
+            strokeWidth + blockNameStringSvg.width + strokeWidth
+
+        headerHeight : Float
+        headerHeight =
+            fontSize + strokeWidth
+
         insertHoles : List (SizedSvg { dragged : DragState, elements : List FactUiState })
         insertHoles =
             case config.elements of
@@ -1042,24 +1101,6 @@ blockVerticalFactListSvg config =
             List.LocalExtra.interweave insertHoles elementsSvgs
                 |> verticalSvg
 
-        fullWidth : Float
-        fullWidth =
-            sideWidth
-                + Basics.max elementsAndInsertHolesSvg.width
-                    (strokeWidth + blockNameStringSvg.width + strokeWidth)
-
-        blockNameStringSvg : SizedSvg future_
-        blockNameStringSvg =
-            unselectableTextSvg config.name
-
-        headerHeight : Float
-        headerHeight =
-            fontSize + strokeWidth
-
-        fullHeight : Float
-        fullHeight =
-            headerHeight + elementsAndInsertHolesSvg.height + sideWidth
-
         shapeSvg : SizedSvg { dragged : DragState, elements : Maybe (List FactUiState) }
         shapeSvg =
             svgPolygon
@@ -1084,29 +1125,13 @@ blockVerticalFactListSvg config =
                                     }
                         )
                 ]
-                ([ ( sideWidth, headerHeight + strokeWidth )
-                 , ( sideWidth + strokeWidth, headerHeight )
-                 , ( fullWidth, headerHeight )
-                 , ( fullWidth, 0 )
-                 , ( strokeWidth, 0 )
-                 , ( 0, strokeWidth )
-                 , ( 0, headerHeight + elementsAndInsertHolesSvg.height )
-                 , ( strokeWidth, fullHeight )
-                 , ( fullWidth, fullHeight )
-                 , ( fullWidth, headerHeight + elementsAndInsertHolesSvg.height )
-                 , ( sideWidth + strokeWidth, headerHeight + elementsAndInsertHolesSvg.height )
-                 , ( sideWidth, headerHeight + elementsAndInsertHolesSvg.height - strokeWidth )
-                 ]
-                    ++ (elementsAndInsertHolesSvg.svgs
-                            |> List.drop 1
-                            |> List.concatMap
-                                (\partAsSvg ->
-                                    [ ( sideWidth, headerHeight + partAsSvg.y - strokeWidth )
-                                    , ( sideWidth + strokeWidth, headerHeight + partAsSvg.y )
-                                    , ( sideWidth, headerHeight + partAsSvg.y + strokeWidth )
-                                    ]
-                                )
-                       )
+                (verticalFactListPolygonPoints
+                    { headerWidth = headerWidth
+                    , headerHeight = headerHeight
+                    , sideWidth = sideWidth
+                    , strokeWidth = strokeWidth
+                    }
+                    elementsAndInsertHolesSvg
                 )
     in
     { width = shapeSvg.width
@@ -1178,102 +1203,50 @@ blockVerticalFactListShapeSvg config =
         sideWidth =
             strokeWidth
 
-        branchesSvg :
-            Result
-                (SizedSvg future_)
-                { width : Float
-                , height : Float
-                , svgs :
-                    List
-                        { y : Float
-                        , svg : Web.Dom.Node future_
-                        }
-                }
-        branchesSvg =
-            case config.elements of
+        elementsSvg :
+            { width : Float
+            , height : Float
+            , svgs :
+                List
+                    { y : Float
+                    , svg : Web.Dom.Node future_
+                    }
+            }
+        elementsSvg =
+            (case config.elements of
                 [] ->
-                    Err (factInsertHoleShapeSvg config.color)
+                    [ factInsertHoleShapeSvg config.color ]
 
                 branch0 :: branch1Up ->
                     (branch0 :: branch1Up)
                         |> List.map factShapeSvg
-                        |> verticalSvg
-                        |> Ok
+            )
+                |> verticalSvg
 
-        anyTextSvg : SizedSvg future_
-        anyTextSvg =
+        blockNameTextSvg : SizedSvg future_
+        blockNameTextSvg =
             unselectableTextSvg config.name
 
         headerHeight : Float
         headerHeight =
             fontSize + strokeWidth
 
-        fullWidth : Float
-        fullWidth =
-            sideWidth
-                + Basics.max
-                    contentWidth
-                    (strokeWidth + anyTextSvg.width + strokeWidth)
-
-        contentWidth : Float
-        contentWidth =
-            case branchesSvg of
-                Ok branchesSvgs ->
-                    branchesSvgs.width
-
-                Err missing ->
-                    missing.width
-
-        contentHeight : Float
-        contentHeight =
-            case branchesSvg of
-                Ok branchesSvgs ->
-                    branchesSvgs.height
-
-                Err missing ->
-                    missing.height
-
-        fullHeight : Float
-        fullHeight =
-            headerHeight
-                + contentHeight
-                + sideWidth
+        headerWidth : Float
+        headerWidth =
+            strokeWidth + blockNameTextSvg.width + strokeWidth
 
         shapeSvg : SizedSvg future_
         shapeSvg =
             svgPolygon
                 [ domModifierFillUniform config.color
                 ]
-                ([ ( fullWidth, headerHeight )
-                 , ( fullWidth, 0 )
-                 , ( sideWidth, 0 )
-                 , ( 0, strokeWidth )
-                 , ( 0, headerHeight + contentHeight )
-                 , ( sideWidth, fullHeight )
-                 , ( fullWidth, fullHeight )
-                 , ( fullWidth, headerHeight + contentHeight )
-                 ]
-                    ++ (case branchesSvg of
-                            Err _ ->
-                                []
-
-                            Ok branchesSvgs ->
-                                ( sideWidth + strokeWidth, headerHeight + contentHeight )
-                                    :: ( sideWidth, headerHeight + contentHeight - strokeWidth )
-                                    :: (branchesSvgs.svgs
-                                            |> List.drop 1
-                                            |> List.concatMap
-                                                (\branchAsSvg ->
-                                                    [ ( sideWidth, headerHeight + branchAsSvg.y - strokeWidth )
-                                                    , ( sideWidth + strokeWidth, headerHeight + branchAsSvg.y )
-                                                    , ( sideWidth, headerHeight + branchAsSvg.y + strokeWidth )
-                                                    ]
-                                                )
-                                       )
-                                    ++ [ ( sideWidth, headerHeight + strokeWidth )
-                                       , ( sideWidth + strokeWidth, headerHeight )
-                                       ]
-                       )
+                (verticalFactListPolygonPoints
+                    { headerWidth = headerWidth
+                    , headerHeight = headerHeight
+                    , sideWidth = sideWidth
+                    , strokeWidth = strokeWidth
+                    }
+                    elementsSvg
                 )
     in
     { width = shapeSvg.width
@@ -1288,25 +1261,20 @@ blockVerticalFactListShapeSvg config =
                     , y = (fontSize + strokeWidth) / 2
                     }
                 ]
-                [ anyTextSvg.svg ]
+                [ blockNameTextSvg.svg ]
             , stackSvg
                 [ svgAttributeTranslate { x = sideWidth, y = headerHeight } ]
-                [ case branchesSvg of
-                    Err missing ->
-                        missing.svg
-
-                    Ok branchesSvgs ->
-                        branchesSvgs
-                            |> .svgs
-                            |> List.map
-                                (\branchAsSvg ->
-                                    branchAsSvg.svg
-                                        |> List.singleton
-                                        |> stackSvg
-                                            [ svgAttributeTranslate { x = 0, y = branchAsSvg.y }
-                                            ]
-                                )
-                            |> stackSvg []
+                [ elementsSvg
+                    |> .svgs
+                    |> List.map
+                        (\branchAsSvg ->
+                            branchAsSvg.svg
+                                |> List.singleton
+                                |> stackSvg
+                                    [ svgAttributeTranslate { x = 0, y = branchAsSvg.y }
+                                    ]
+                        )
+                    |> stackSvg []
                 ]
             ]
     }
