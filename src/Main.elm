@@ -255,7 +255,7 @@ interface state =
             [ Web.Svg.element "rect"
                 [ Web.Dom.attribute "width" "100%"
                 , Web.Dom.attribute "height" "100%"
-                , Web.Dom.attribute "fill" (Color.rgb 0 0 0 |> Color.toCssString)
+                , domModifierFillUniform (Color.rgb 0 0 0)
                 , case state.dragged of
                     Nothing ->
                         Web.Dom.modifierNone
@@ -477,7 +477,7 @@ unselectableTextSvg string =
             , Web.Dom.style "pointer-events" "none"
             , Web.Dom.attribute "x" (0 |> String.fromFloat)
             , Web.Dom.attribute "y" (fontBaseline |> String.fromFloat)
-            , svgAttributeFillUniform (Color.rgb 1 1 1)
+            , domModifierFillUniform (Color.rgb 1 1 1)
             ]
             [ Web.Dom.text string ]
     }
@@ -607,7 +607,7 @@ relationDefinitionSvg dragState definition =
         shapeSvg : SizedSvg future_
         shapeSvg =
             polygonSvg
-                [ svgAttributeFillUniform color
+                [ domModifierFillUniform color
                 ]
                 (case definition.equivalentFact of
                     Nothing ->
@@ -1038,7 +1038,7 @@ blockVerticalFactListSvg { dragState, elements, color, name, fact } =
         shapeSvg : SizedSvg { dragged : DragState, elements : Maybe (List FactUiState) }
         shapeSvg =
             polygonSvg
-                [ svgAttributeFillUniform color
+                [ domModifierFillUniform color
                 , domListenToPointerDown
                     |> Web.Dom.modifierFutureMap
                         (\pointerDownEventPosition ->
@@ -1242,7 +1242,7 @@ blockVerticalFactListShapeSvg config =
         shapeSvg : SizedSvg future_
         shapeSvg =
             polygonSvg
-                [ svgAttributeFillUniform config.color
+                [ domModifierFillUniform config.color
                 ]
                 ([ ( fullWidth, headerHeight )
                  , ( fullWidth, 0 )
@@ -1368,7 +1368,7 @@ factNotSvgWithInteractivity parts =
         shapeSvg : SizedSvg future
         shapeSvg =
             polygonSvg
-                [ svgAttributeFillUniform (Color.rgb 0.2 0.04 0)
+                [ domModifierFillUniform (Color.rgb 0.2 0.04 0)
                 , parts.shapeListenModifier
                 ]
                 (case parts.maybeFactInverse of
@@ -1463,7 +1463,7 @@ factInsertHoleShapeSvg =
             strokeWidth + strokeWidth
     in
     polygonSvg
-        [ svgAttributeFillUniform missingThingColor
+        [ domModifierFillUniform missingThingColor
         ]
         [ ( 0, strokeWidth )
         , ( strokeWidth, 0 )
@@ -1519,7 +1519,7 @@ factEqualsSvgWithInteractivity parts =
         shapeSvg : SizedSvg future
         shapeSvg =
             polygonSvg
-                [ svgAttributeFillUniform color
+                [ domModifierFillUniform color
                 , parts.shapeEventListenModifier
                 ]
                 [ ( 0, strokeWidth )
@@ -1641,7 +1641,7 @@ relationUseSvgWithInteractivity parts =
         shapeSvg : SizedSvg future
         shapeSvg =
             polygonSvg
-                [ svgAttributeFillUniform color
+                [ domModifierFillUniform color
                 , parts.shapeEventListenModifier
                 ]
                 [ ( 0, strokeWidth )
@@ -1843,7 +1843,7 @@ valueLookupSvgWithInteractivity interactivity valueLookup =
         [] ->
             circleSvg { radius = strokeWidth / 2 }
                 [ interactivity.listenToDragStart
-                , Web.Dom.attribute "fill" (valueLookupColor |> Color.toCssString)
+                , domModifierFillUniform valueLookupColor
                 , svgAttributeTranslate { x = strokeWidth / 2, y = strokeWidth / 2 }
                 ]
 
@@ -1906,7 +1906,7 @@ valueLookupSvgWithInteractivity interactivity valueLookup =
                 shapeSvg =
                     polygonSvg
                         [ interactivity.listenToDragStart
-                        , Web.Dom.attribute "fill" (valueLookupColor |> Color.toCssString)
+                        , domModifierFillUniform valueLookupColor
                         , Web.Dom.attribute "stroke" (valueLookupColor |> Color.toCssString)
                         , Web.Dom.attribute "stroke-width" (strokeWidth |> String.fromFloat)
                         , Web.Dom.attribute "stroke-linejoin" "round"
@@ -2109,8 +2109,8 @@ variableShapeSvg =
             shapeSvg : SizedSvg future_
             shapeSvg =
                 polygonSvg
-                    [ svgAttributeFillUniform variableColor
-                    , Web.Dom.attribute "fill" (variableColor |> Color.toCssString)
+                    [ domModifierFillUniform variableColor
+                    , domModifierFillUniform variableColor
                     , Web.Dom.attribute "stroke" (variableColor |> Color.toCssString)
                     , Web.Dom.attribute "stroke-width" (strokeWidth |> String.fromFloat)
                     , Web.Dom.attribute "stroke-linejoin" "round"
@@ -2190,7 +2190,7 @@ valueHoleShapeSvg =
         shapeSvg : SizedSvg future_
         shapeSvg =
             polygonSvg
-                [ svgAttributeFillUniform missingThingColor
+                [ domModifierFillUniform missingThingColor
                 , Web.Dom.attribute "stroke" (missingThingColor |> Color.toCssString)
                 , Web.Dom.attribute "stroke-width" (strokeWidth |> String.fromFloat)
                 , Web.Dom.attribute "stroke-linejoin" "round"
@@ -2207,8 +2207,8 @@ valueHoleShapeSvg =
     }
 
 
-svgAttributeFillUniform : Color -> Web.Dom.Modifier future_
-svgAttributeFillUniform color =
+domModifierFillUniform : Color -> Web.Dom.Modifier future_
+domModifierFillUniform color =
     Web.Dom.attribute "fill" (color |> Color.toCssString)
 
 
