@@ -1,11 +1,18 @@
 port module Main exposing (State, main)
 
+import Angle exposing (Angle)
+import Arc2d
 import Color exposing (Color)
 import FastDict
 import Json.Decode
 import Json.Encode
 import Lau
+import Length
 import List.LocalExtra
+import Parameter1d
+import Point2d
+import Quantity
+import Svg.PathD
 import Web
 import Web.Dom
 import Web.Svg
@@ -606,7 +613,7 @@ relationDefinitionSvg dragState definition =
 
         shapeSvg : SizedSvg future_
         shapeSvg =
-            polygonSvg
+            svgPolygon
                 [ domModifierFillUniform color
                 ]
                 (case definition.equivalentFact of
@@ -1037,7 +1044,7 @@ blockVerticalFactListSvg { dragState, elements, color, name, fact } =
 
         shapeSvg : SizedSvg { dragged : DragState, elements : Maybe (List FactUiState) }
         shapeSvg =
-            polygonSvg
+            svgPolygon
                 [ domModifierFillUniform color
                 , domListenToPointerDown
                     |> Web.Dom.modifierFutureMap
@@ -1241,7 +1248,7 @@ blockVerticalFactListShapeSvg config =
 
         shapeSvg : SizedSvg future_
         shapeSvg =
-            polygonSvg
+            svgPolygon
                 [ domModifierFillUniform config.color
                 ]
                 ([ ( fullWidth, headerHeight )
@@ -1367,7 +1374,7 @@ factNotSvgWithInteractivity parts =
 
         shapeSvg : SizedSvg future
         shapeSvg =
-            polygonSvg
+            svgPolygon
                 [ domModifierFillUniform (Color.rgb 0.2 0.04 0)
                 , parts.shapeListenModifier
                 ]
@@ -1462,7 +1469,7 @@ factInsertHoleShapeSvg =
         fullHeight =
             strokeWidth + strokeWidth
     in
-    polygonSvg
+    svgPolygon
         [ domModifierFillUniform missingThingColor
         ]
         [ ( 0, strokeWidth )
@@ -1518,7 +1525,7 @@ factEqualsSvgWithInteractivity parts =
 
         shapeSvg : SizedSvg future
         shapeSvg =
-            polygonSvg
+            svgPolygon
                 [ domModifierFillUniform color
                 , parts.shapeEventListenModifier
                 ]
@@ -1561,11 +1568,11 @@ factEqualsSvgWithInteractivity parts =
     }
 
 
-polygonSvg :
+svgPolygon :
     List (Web.Dom.Modifier future_)
     -> List ( Float, Float )
     -> SizedSvg future_
-polygonSvg modifiers points =
+svgPolygon modifiers points =
     let
         xMinimum : Float
         xMinimum =
@@ -1640,7 +1647,7 @@ relationUseSvgWithInteractivity parts =
 
         shapeSvg : SizedSvg future
         shapeSvg =
-            polygonSvg
+            svgPolygon
                 [ domModifierFillUniform color
                 , parts.shapeEventListenModifier
                 ]
@@ -1835,16 +1842,16 @@ valueLookupSvgWithInteractivity :
     -> SizedSvg future
 valueLookupSvgWithInteractivity interactivity valueLookup =
     let
-        strokeWidth : Float
-        strokeWidth =
-            fontSize * 2
+        radius : Float
+        radius =
+            fontSize
     in
     case valueLookup of
         [] ->
-            circleSvg { radius = strokeWidth / 2 }
+            circleSvg { radius = radius }
                 [ interactivity.listenToDragStart
                 , domModifierFillUniform valueLookupColor
-                , svgAttributeTranslate { x = strokeWidth / 2, y = strokeWidth / 2 }
+                , svgAttributeTranslate { x = radius, y = radius }
                 ]
 
         entry0 :: entry1Up ->
@@ -1902,20 +1909,14 @@ valueLookupSvgWithInteractivity interactivity valueLookup =
                             )
                         |> verticalSvg
 
-                shapeSvg : SizedSvg future
+                shapeSvg : Web.Dom.Node future
                 shapeSvg =
-                    polygonSvg
+                    svgRoundedRect
                         [ interactivity.listenToDragStart
                         , domModifierFillUniform valueLookupColor
-                        , Web.Dom.attribute "stroke" (valueLookupColor |> Color.toCssString)
-                        , Web.Dom.attribute "stroke-width" (strokeWidth |> String.fromFloat)
-                        , Web.Dom.attribute "stroke-linejoin" "round"
                         ]
-                        [ ( strokeWidth / 2, strokeWidth / 2 )
-                        , ( fullWidth - strokeWidth / 2, strokeWidth / 2 )
-                        , ( fullWidth - strokeWidth / 2, fullHeight - strokeWidth / 2 )
-                        , ( strokeWidth / 2, fullHeight - strokeWidth / 2 )
-                        ]
+                        { radius = radius, width = fullWidth, height = fullHeight }
+                        |> .svg
 
                 fullHeight : Float
                 fullHeight =
@@ -1923,14 +1924,14 @@ valueLookupSvgWithInteractivity interactivity valueLookup =
 
                 fullWidth : Float
                 fullWidth =
-                    strokeWidth / 2 + entrySvgs.width
+                    radius + entrySvgs.width
             in
             { width = fullWidth
             , height = fullHeight
             , svg =
                 stackSvg
                     []
-                    [ shapeSvg.svg
+                    [ shapeSvg
                     , entrySvgs.svgs
                         |> List.map
                             (\entryAsSvg ->
@@ -1939,8 +1940,7 @@ valueLookupSvgWithInteractivity interactivity valueLookup =
                                     |> stackSvg [ svgAttributeTranslate { x = 0, y = entryAsSvg.y } ]
                             )
                         |> stackSvg
-                            [ svgAttributeTranslate
-                                { x = strokeWidth / 2, y = 0 }
+                            [ svgAttributeTranslate { x = radius, y = 0 }
                             ]
                     ]
             }
@@ -2098,39 +2098,40 @@ variableShapeSvg : String -> SizedSvg future_
 variableShapeSvg =
     \variableName ->
         let
-            strokeWidth : Float
-            strokeWidth =
-                fontSize * 2
+            radius : Float
+            radius =
+                fontSize
 
             nameSvg : SizedSvg future_
             nameSvg =
                 unselectableTextSvg variableName
 
-            shapeSvg : SizedSvg future_
-            shapeSvg =
-                polygonSvg
+            fullWidth : Float
+            fullWidth =
+                nameSvg.width + radius * 2
+
+            fullHeight : Float
+            fullHeight =
+                nameSvg.height + radius
+
+            backgroundSvg : Web.Dom.Node future_
+            backgroundSvg =
+                svgRoundedRect
                     [ domModifierFillUniform variableColor
-                    , domModifierFillUniform variableColor
-                    , Web.Dom.attribute "stroke" (variableColor |> Color.toCssString)
-                    , Web.Dom.attribute "stroke-width" (strokeWidth |> String.fromFloat)
-                    , Web.Dom.attribute "stroke-linejoin" "round"
                     ]
-                    [ ( strokeWidth / 2, strokeWidth / 2 )
-                    , ( nameSvg.width + strokeWidth / 2, strokeWidth / 2 )
-                    , ( nameSvg.width + strokeWidth / 2, fontSize )
-                    , ( strokeWidth / 2, fontSize )
-                    ]
+                    { radius = radius, width = fullWidth, height = fullHeight }
+                    |> .svg
         in
-        { width = shapeSvg.width + strokeWidth
-        , height = shapeSvg.height + strokeWidth
+        { width = fullWidth
+        , height = fullHeight
         , svg =
             stackSvg
                 []
-                [ shapeSvg.svg
+                [ backgroundSvg
                 , stackSvg
                     [ svgAttributeTranslate
-                        { x = strokeWidth / 2
-                        , y = strokeWidth / 2
+                        { x = radius
+                        , y = radius
                         }
                     ]
                     [ nameSvg.svg ]
@@ -2180,31 +2181,166 @@ valueHoleSvg dragState =
 valueHoleShapeSvg : SizedSvg future_
 valueHoleShapeSvg =
     let
-        strokeWidth : Float
-        strokeWidth =
-            fontSize * 2
+        radius : Float
+        radius =
+            fontSize
 
+        fullWidth : Float
         fullWidth =
-            fontSize * 5 + strokeWidth
+            fontSize * 5 + radius * 2
 
-        shapeSvg : SizedSvg future_
-        shapeSvg =
-            polygonSvg
+        fullHeight : Float
+        fullHeight =
+            fontSize + radius
+
+        backgroundSvg : Web.Dom.Node future_
+        backgroundSvg =
+            svgRoundedRect
                 [ domModifierFillUniform missingThingColor
-                , Web.Dom.attribute "stroke" (missingThingColor |> Color.toCssString)
-                , Web.Dom.attribute "stroke-width" (strokeWidth |> String.fromFloat)
-                , Web.Dom.attribute "stroke-linejoin" "round"
                 ]
-                [ ( strokeWidth / 2, strokeWidth / 2 )
-                , ( fullWidth - strokeWidth / 2, strokeWidth / 2 )
-                , ( fullWidth - strokeWidth / 2, fontSize )
-                , ( strokeWidth / 2, fontSize )
-                ]
+                { radius = radius, width = fullWidth, height = fullHeight }
+                |> .svg
     in
     { width = fullWidth
-    , height = fontSize + fontSize
-    , svg = shapeSvg.svg
+    , height = fullHeight
+    , svg = backgroundSvg
     }
+
+
+svgClosedPath :
+    List (Web.Dom.Modifier future)
+    -> { start : { x : Float, y : Float }, trail : List Svg.PathD.Segment }
+    -> Web.Dom.Node future
+svgClosedPath modifiers segments =
+    Web.Svg.element "path"
+        (Web.Dom.attribute "d"
+            (Svg.PathD.pathD
+                (case segments.trail of
+                    [] ->
+                        []
+
+                    trailSegment0 :: trailSegment1Up ->
+                        Svg.PathD.M ( segments.start.x, segments.start.y )
+                            :: (trailSegment0 :: trailSegment1Up)
+                            ++ [ Svg.PathD.Z ]
+                )
+            )
+            :: modifiers
+        )
+        []
+
+
+pathSegmentTopRightQuarterArcCounterclockwise :
+    { end : { x : Float, y : Float }, radius : Float }
+    -> List Svg.PathD.Segment
+pathSegmentTopRightQuarterArcCounterclockwise geometry =
+    pathDArc
+        { centerX = geometry.end.x - geometry.radius
+        , centerY = geometry.end.y
+        , radius = geometry.radius
+        , startAngle = Angle.turns (3 / 4)
+        , angleSpan = Angle.turns (1 / 4)
+        }
+
+
+pathSegmentTopLeftQuarterArcCounterclockwise :
+    { end : { x : Float, y : Float }, radius : Float }
+    -> List Svg.PathD.Segment
+pathSegmentTopLeftQuarterArcCounterclockwise geometry =
+    pathDArc
+        { centerX = geometry.end.x
+        , centerY = geometry.end.y + geometry.radius
+        , radius = geometry.radius
+        , startAngle = Angle.turns (1 / 2)
+        , angleSpan = Angle.turns (1 / 4)
+        }
+
+
+pathSegmentBottomLeftQuarterArcCounterclockwise :
+    { end : { x : Float, y : Float }, radius : Float }
+    -> List Svg.PathD.Segment
+pathSegmentBottomLeftQuarterArcCounterclockwise geometry =
+    pathDArc
+        { centerX = geometry.end.x + geometry.radius
+        , centerY = geometry.end.y
+        , radius = geometry.radius
+        , startAngle = Angle.turns (1 / 4)
+        , angleSpan = Angle.turns (1 / 4)
+        }
+
+
+pathSegmentBottomRightQuarterArcCounterclockwise :
+    { end : { x : Float, y : Float }, radius : Float }
+    -> List Svg.PathD.Segment
+pathSegmentBottomRightQuarterArcCounterclockwise geometry =
+    pathDArc
+        { centerX = geometry.end.x
+        , centerY = geometry.end.y - geometry.radius
+        , radius = geometry.radius
+        , startAngle = Angle.turns 0
+        , angleSpan = Angle.turns (1 / 4)
+        }
+
+
+svgRoundedRect :
+    List (Web.Dom.Modifier future)
+    -> { width : Float, height : Float, radius : Float }
+    -> SizedSvg future
+svgRoundedRect modifiers geometry =
+    { width = geometry.width
+    , height = geometry.height
+    , svg =
+        svgClosedPath
+            modifiers
+            { start = { x = 0, y = geometry.radius }
+            , trail =
+                [ pathSegmentTopLeftQuarterArcCounterclockwise { radius = geometry.radius, end = { x = geometry.radius, y = 0 } }
+                , [ Svg.PathD.L ( geometry.width - geometry.radius, 0 ) ]
+                , pathSegmentTopRightQuarterArcCounterclockwise { radius = geometry.radius, end = { x = geometry.width, y = geometry.radius } }
+                , [ Svg.PathD.L ( geometry.width, geometry.height - geometry.radius ) ]
+                , pathSegmentBottomRightQuarterArcCounterclockwise { radius = geometry.radius, end = { x = geometry.width - geometry.radius, y = geometry.height } }
+                , [ Svg.PathD.L ( geometry.radius, geometry.height ) ]
+                , pathSegmentBottomLeftQuarterArcCounterclockwise { radius = geometry.radius, end = { x = 0, y = geometry.height - geometry.radius } }
+                , [ Svg.PathD.L ( 0, geometry.radius ) ]
+                ]
+                    |> List.concat
+            }
+    }
+
+
+pathDArc :
+    { centerX : Float, centerY : Float, radius : Float, startAngle : Angle, angleSpan : Angle }
+    -> List Svg.PathD.Segment
+pathDArc geometry =
+    let
+        arcGeometry : Arc2d.Arc2d Length.Meters coordinates
+        arcGeometry =
+            Arc2d.with
+                { centerPoint = Point2d.meters geometry.centerX geometry.centerY
+                , startAngle = geometry.startAngle |> Angle.normalize
+                , sweptAngle = geometry.angleSpan |> Angle.normalize
+                , radius = Length.meters geometry.radius
+                }
+
+        maxSegmentAngle : Angle
+        maxSegmentAngle =
+            Angle.turns (1 / 3)
+
+        numSegments : Int
+        numSegments =
+            1 + floor (abs (Quantity.ratio (arcGeometry |> Arc2d.sweptAngle) maxSegmentAngle))
+    in
+    Parameter1d.trailing numSegments
+        (\parameterValue ->
+            Svg.PathD.A
+                ( Arc2d.radius arcGeometry |> Length.inMeters
+                , Arc2d.radius arcGeometry |> Length.inMeters
+                )
+                0
+                False
+                (arcGeometry |> Arc2d.sweptAngle |> Quantity.greaterThanOrEqualTo Quantity.zero)
+                (Arc2d.pointOn arcGeometry parameterValue |> Point2d.toTuple Length.inMeters)
+        )
 
 
 domModifierFillUniform : Color -> Web.Dom.Modifier future_
