@@ -25,7 +25,7 @@ type alias State =
     , relationDefinitions :
         FastDict.Dict
             String
-            { parameter : ValueUiState
+            { parameter : Maybe ValueUiState
             , equivalentFact : Maybe FactUiState
             }
     , strayThings : List { x : Float, y : Float, thing : DraggedThing }
@@ -45,25 +45,23 @@ type alias DragState =
 
 type DraggedThing
     = DraggedFact FactUiState
-    | DraggedValueLookup ValueLookupUiState
-    | DraggedVariable String
+    | DraggedValue ValueUiState
 
 
 type alias ValueLookupUiState =
-    List { key : String, value : ValueUiState }
+    List { key : String, value : Maybe ValueUiState }
 
 
 type FactUiState
-    = RelationUse { identifier : String, argument : ValueUiState }
-    | Equal { a : ValueUiState, b : ValueUiState }
+    = RelationUse { identifier : String, argument : Maybe ValueUiState }
+    | Equal { a : Maybe ValueUiState, b : Maybe ValueUiState }
     | Not (Maybe FactUiState)
     | All (List FactUiState)
     | Any (List FactUiState)
 
 
 type ValueUiState
-    = ValueHole
-    | Variable String
+    = Variable String
     | ValueLookup ValueLookupUiState
 
 
@@ -71,9 +69,6 @@ valueUiStateToLau : ValueUiState -> Maybe (Lau.ValueWithVariableName String)
 valueUiStateToLau =
     \valueWithHoles ->
         case valueWithHoles of
-            ValueHole ->
-                Nothing
-
             Variable variableName ->
                 Lau.Variable variableName |> Just
 
@@ -83,7 +78,7 @@ valueUiStateToLau =
                         |> List.LocalExtra.allJustMap
                             (\entry ->
                                 Maybe.map (\entryValue -> ( entry.key, entryValue ))
-                                    (entry.value |> valueUiStateToLau)
+                                    (entry.value |> Maybe.andThen valueUiStateToLau)
                             )
                         |> Maybe.map FastDict.fromList
                     )
@@ -104,12 +99,12 @@ factUiStateToLau =
                             , argument = argument
                             }
                     )
-                    (relation.argument |> valueUiStateToLau)
+                    (relation.argument |> Maybe.andThen valueUiStateToLau)
 
             Equal toEquateWithHoles ->
                 Maybe.map2 (\toEquateA toEquateB -> Lau.Equal [ toEquateA, toEquateB ])
-                    (toEquateWithHoles.a |> valueUiStateToLau)
-                    (toEquateWithHoles.b |> valueUiStateToLau)
+                    (toEquateWithHoles.a |> Maybe.andThen valueUiStateToLau)
+                    (toEquateWithHoles.b |> Maybe.andThen valueUiStateToLau)
 
             All partsWithHoles ->
                 Maybe.map Lau.All
@@ -138,21 +133,22 @@ initialState =
         FastDict.singleton "main"
             { parameter =
                 ValueLookup
-                    [ { key = "state", value = Variable "state" }
-                    , { key = "interface", value = Variable "interface" }
+                    [ { key = "state", value = Variable "state" |> Just }
+                    , { key = "interface", value = Variable "interface" |> Just }
                     ]
+                    |> Just
             , equivalentFact =
                 Any
                     [ All
                         [ Not
                             (RelationUse
                                 { identifier = "is greater or equal to 0"
-                                , argument = Variable "state"
+                                , argument = Variable "state" |> Just
                                 }
                                 |> Just
                             )
                         , Equal
-                            { a = Variable "Interface"
+                            { a = Variable "Interface" |> Just
                             , b =
                                 ValueLookup
                                     [ { key = "svg render"
@@ -164,28 +160,33 @@ initialState =
                                                             [ { key = "radius"
                                                               , value =
                                                                     ValueLookup
-                                                                        [ { key = "50", value = ValueLookup [] } ]
+                                                                        [ { key = "50", value = ValueLookup [] |> Just } ]
+                                                                        |> Just
                                                               }
                                                             , { key = "y"
                                                               , value =
                                                                     ValueLookup
-                                                                        [ { key = "50", value = ValueLookup [] } ]
+                                                                        [ { key = "50", value = ValueLookup [] |> Just } ]
+                                                                        |> Just
                                                               }
                                                             ]
+                                                            |> Just
                                                   }
                                                 ]
+                                                |> Just
                                       }
                                     ]
+                                    |> Just
                             }
                         ]
                     , All
                         [ RelationUse
                             { identifier = "is less than 10"
-                            , argument = Variable "state"
+                            , argument = Variable "state" |> Just
                             }
                         , Equal
-                            { a = Variable "interface"
-                            , b = ValueHole
+                            { a = Variable "interface" |> Just
+                            , b = Nothing
                             }
                         ]
                     ]
@@ -327,45 +328,16 @@ interface state =
                 |> List.indexedMap
                     (\strayThingIndex strayThing ->
                         let
+                            strayThingSvg : Web.Dom.Node { dragged : DragState, thing : Maybe DraggedThing }
                             strayThingSvg =
                                 case strayThing.thing of
-                                    DraggedVariable variableName ->
-                                        variableSvg state.dragged variableName
+                                    DraggedValue droppedValue ->
+                                        valueSvg state.dragged droppedValue
                                             |> .svg
                                             |> Web.Dom.futureMap
                                                 (\future ->
-                                                    { state
-                                                        | dragged = future.dragged
-                                                        , strayThings =
-                                                            case future.variable of
-                                                                Nothing ->
-                                                                    state.strayThings
-                                                                        |> List.LocalExtra.removeElementAtIndex strayThingIndex
-
-                                                                Just futureVariableName ->
-                                                                    state.strayThings
-                                                                        |> List.LocalExtra.elementAtIndexAlter strayThingIndex
-                                                                            (\stray -> { stray | thing = DraggedVariable futureVariableName })
-                                                    }
-                                                )
-
-                                    DraggedValueLookup valueLookup ->
-                                        valueLookupSvg state.dragged valueLookup
-                                            |> .svg
-                                            |> Web.Dom.futureMap
-                                                (\future ->
-                                                    { state
-                                                        | dragged = future.dragged
-                                                        , strayThings =
-                                                            case future.valueLookup of
-                                                                Nothing ->
-                                                                    state.strayThings
-                                                                        |> List.LocalExtra.removeElementAtIndex strayThingIndex
-
-                                                                Just futureValueLookup ->
-                                                                    state.strayThings
-                                                                        |> List.LocalExtra.elementAtIndexAlter strayThingIndex
-                                                                            (\stray -> { stray | thing = DraggedValueLookup futureValueLookup })
+                                                    { dragged = future.dragged
+                                                    , thing = Maybe.map DraggedValue future.value
                                                     }
                                                 )
 
@@ -374,22 +346,28 @@ interface state =
                                             |> .svg
                                             |> Web.Dom.futureMap
                                                 (\future ->
-                                                    { state
-                                                        | dragged = future.dragged
-                                                        , strayThings =
-                                                            case future.fact of
-                                                                Nothing ->
-                                                                    state.strayThings
-                                                                        |> List.LocalExtra.removeElementAtIndex strayThingIndex
-
-                                                                Just futureFact ->
-                                                                    state.strayThings
-                                                                        |> List.LocalExtra.elementAtIndexAlter strayThingIndex
-                                                                            (\stray -> { stray | thing = DraggedFact futureFact })
+                                                    { dragged = future.dragged
+                                                    , thing = Maybe.map DraggedFact future.fact
                                                     }
                                                 )
                         in
                         strayThingSvg
+                            |> Web.Dom.futureMap
+                                (\future ->
+                                    { state
+                                        | dragged = future.dragged
+                                        , strayThings =
+                                            case future.thing of
+                                                Nothing ->
+                                                    state.strayThings
+                                                        |> List.LocalExtra.removeElementAtIndex strayThingIndex
+
+                                                Just futureThing ->
+                                                    state.strayThings
+                                                        |> List.LocalExtra.elementAtIndexAlter strayThingIndex
+                                                            (\stray -> { stray | thing = futureThing })
+                                    }
+                                )
                             |> List.singleton
                             |> stackSvg
                                 [ svgAttributeTranslate
@@ -412,11 +390,8 @@ interface state =
                         , Web.Dom.style "pointer-events" "none"
                         ]
                         [ case dragged.thing of
-                            DraggedVariable variableName ->
-                                variableShapeSvg variableName |> .svg
-
-                            DraggedValueLookup draggedValue ->
-                                draggedValue |> valueLookupShapeSvg |> .svg
+                            DraggedValue value ->
+                                valueShapeSvg value |> .svg
 
                             DraggedFact draggedFact ->
                                 draggedFact |> factShapeSvg |> .svg
@@ -530,18 +505,51 @@ horizontalSvg =
         }
 
 
+factOrHoleShapeSvg : Color -> Maybe FactUiState -> SizedSvg future_
+factOrHoleShapeSvg backgroundColor fact =
+    case fact of
+        Nothing ->
+            factInsertHoleShapeSvg backgroundColor
+
+        Just equivalentFact ->
+            factShapeSvg equivalentFact
+
+
+factOrHoleSvg :
+    Color
+    -> DragState
+    -> Maybe FactUiState
+    -> SizedSvg { dragged : DragState, fact : Maybe FactUiState }
+factOrHoleSvg backgroundColor dragState fact =
+    case fact of
+        Nothing ->
+            factInsertHoleSvg backgroundColor dragState
+                |> sizedSvgFutureMap
+                    (\dropped ->
+                        { dragged = Nothing, fact = Just dropped }
+                    )
+
+        Just equivalentFact ->
+            factSvg dragState equivalentFact
+
+
+factRelationBackgroundColor : Color
+factRelationBackgroundColor =
+    Color.rgb 0.2 0.2 0
+
+
 relationDefinitionSvg :
     DragState
     ->
         { name : String
-        , parameter : ValueUiState
+        , parameter : Maybe ValueUiState
         , equivalentFact : Maybe FactUiState
         }
     ->
         SizedSvg
             { dragged : DragState
             , relationDefinition :
-                { parameter : ValueUiState
+                { parameter : Maybe ValueUiState
                 , equivalentFact : Maybe FactUiState
                 }
             }
@@ -569,26 +577,13 @@ relationDefinitionSvg dragState definition =
         spaceWidth =
             fontWidth / 2
 
-        color : Color
-        color =
-            Color.rgb 0.2 0.2 0
-
-        parameterSvg : SizedSvg { dragged : DragState, value : ValueUiState }
+        parameterSvg : SizedSvg { dragged : DragState, value : Maybe ValueUiState }
         parameterSvg =
-            definition.parameter |> valueSvg dragState
+            valueOrHoleSvg factRelationBackgroundColor dragState definition.parameter
 
         equivalentFactSvg : SizedSvg { dragged : DragState, fact : Maybe FactUiState }
         equivalentFactSvg =
-            case definition.equivalentFact of
-                Nothing ->
-                    factInsertHoleSvg dragState
-                        |> sizedSvgFutureMap
-                            (\dropped ->
-                                { dragged = Nothing, fact = Just dropped }
-                            )
-
-                Just equivalentFact ->
-                    factSvg dragState equivalentFact
+            factOrHoleSvg factRelationBackgroundColor dragState definition.equivalentFact
 
         nameSvg : SizedSvg future_
         nameSvg =
@@ -614,7 +609,7 @@ relationDefinitionSvg dragState definition =
         shapeSvg : SizedSvg future_
         shapeSvg =
             svgPolygon
-                [ domModifierFillUniform color
+                [ domModifierFillUniform factRelationBackgroundColor
                 ]
                 (case definition.equivalentFact of
                     Nothing ->
@@ -697,32 +692,27 @@ factNotShapeSvg maybeFactInverse =
     factNotSvgWithInteractivity
         { maybeFactInverse = maybeFactInverse
         , factInverseSvg =
-            case maybeFactInverse of
-                Nothing ->
-                    factInsertHoleShapeSvg
-
-                Just equivalentFact ->
-                    factShapeSvg equivalentFact
+            factOrHoleShapeSvg factNotBackgroundColor maybeFactInverse
         , shapeListenModifier = Web.Dom.modifierNone
         }
 
 
-equalsShapeSvg : { a : ValueUiState, b : ValueUiState } -> SizedSvg future_
+equalsShapeSvg : { a : Maybe ValueUiState, b : Maybe ValueUiState } -> SizedSvg future_
 equalsShapeSvg toEquate =
     factEqualsSvgWithInteractivity
-        { valueASvg = toEquate.a |> valueShapeSvg
-        , valueBSvg = toEquate.b |> valueShapeSvg
+        { valueASvg = valueOrHoleShapeSvg factRelationBackgroundColor toEquate.a
+        , valueBSvg = valueOrHoleShapeSvg factRelationBackgroundColor toEquate.b
         , shapeEventListenModifier = Web.Dom.modifierNone
         }
 
 
-relationUseShapeSvg : { identifier : String, argument : ValueUiState } -> SizedSvg future_
+relationUseShapeSvg : { identifier : String, argument : Maybe ValueUiState } -> SizedSvg future_
 relationUseShapeSvg relationUse =
     relationUseSvgWithInteractivity
         { shapeEventListenModifier = Web.Dom.modifierNone
         , identifier = relationUse.identifier
         , argumentAsSvg =
-            relationUse.argument |> valueShapeSvg
+            valueOrHoleShapeSvg factRelationBackgroundColor relationUse.argument
         }
 
 
@@ -743,6 +733,34 @@ factShapeSvg fact =
 
         RelationUse relationUse ->
             relationUseShapeSvg relationUse
+
+
+valueOrHoleSvg :
+    Color
+    -> DragState
+    -> Maybe ValueUiState
+    -> SizedSvg { dragged : DragState, value : Maybe ValueUiState }
+valueOrHoleSvg backgroundColor dragState maybeValue =
+    case maybeValue of
+        Nothing ->
+            valueHoleSvg backgroundColor dragState
+                |> sizedSvgFutureMap
+                    (\droppedValue ->
+                        { dragged = Nothing, value = Just droppedValue }
+                    )
+
+        Just value ->
+            valueSvg dragState value
+
+
+valueOrHoleShapeSvg : Color -> Maybe ValueUiState -> SizedSvg future_
+valueOrHoleShapeSvg backgroundColor maybeValue =
+    case maybeValue of
+        Just value ->
+            valueShapeSvg value
+
+        Nothing ->
+            valueHoleShapeSvg backgroundColor
 
 
 factSvg :
@@ -772,22 +790,13 @@ factSvg dragState fact =
         Not maybeFactInverse ->
             factNotSvgWithInteractivity
                 { factInverseSvg =
-                    case maybeFactInverse of
-                        Nothing ->
-                            factInsertHoleSvg dragState
-                                |> sizedSvgFutureMap
-                                    (\dropped ->
-                                        { dragged = Nothing, fact = Just (Not (Just dropped)) }
-                                    )
-
-                        Just equivalentFact ->
-                            factSvg dragState equivalentFact
-                                |> sizedSvgFutureMap
-                                    (\futureFactInverse ->
-                                        { fact = Just (Not futureFactInverse.fact)
-                                        , dragged = futureFactInverse.dragged
-                                        }
-                                    )
+                    factOrHoleSvg factNotBackgroundColor dragState maybeFactInverse
+                        |> sizedSvgFutureMap
+                            (\futureFactInverse ->
+                                { fact = Just (Not futureFactInverse.fact)
+                                , dragged = futureFactInverse.dragged
+                                }
+                            )
                 , maybeFactInverse = maybeFactInverse
                 , shapeListenModifier =
                     domListenToPointerDown
@@ -814,8 +823,7 @@ factSvg dragState fact =
         Equal toEquate ->
             factEqualsSvgWithInteractivity
                 { valueASvg =
-                    toEquate.a
-                        |> valueSvg dragState
+                    valueOrHoleSvg factRelationBackgroundColor dragState toEquate.a
                         |> sizedSvgFutureMap
                             (\futureA ->
                                 { dragged = futureA.dragged
@@ -823,8 +831,7 @@ factSvg dragState fact =
                                 }
                             )
                 , valueBSvg =
-                    toEquate.b
-                        |> valueSvg dragState
+                    valueOrHoleSvg factRelationBackgroundColor dragState toEquate.b
                         |> sizedSvgFutureMap
                             (\futureB ->
                                 { dragged = futureB.dragged
@@ -879,20 +886,36 @@ factSvg dragState fact =
                             )
                 , identifier = relationUse.identifier
                 , argumentAsSvg =
-                    relationUse.argument
-                        |> valueSvg dragState
-                        |> sizedSvgFutureMap
-                            (\futureArgumentUiState ->
-                                { dragged = futureArgumentUiState.dragged
-                                , fact =
-                                    Just
-                                        (RelationUse
-                                            { identifier = relationUse.identifier
-                                            , argument = futureArgumentUiState.value
-                                            }
-                                        )
-                                }
-                            )
+                    case relationUse.argument of
+                        Nothing ->
+                            valueHoleSvg factRelationBackgroundColor dragState
+                                |> sizedSvgFutureMap
+                                    (\futureArgumentUiState ->
+                                        { dragged = Nothing
+                                        , fact =
+                                            Just
+                                                (RelationUse
+                                                    { identifier = relationUse.identifier
+                                                    , argument = Just futureArgumentUiState
+                                                    }
+                                                )
+                                        }
+                                    )
+
+                        Just argumentValue ->
+                            valueSvg dragState argumentValue
+                                |> sizedSvgFutureMap
+                                    (\futureArgumentUiState ->
+                                        { dragged = futureArgumentUiState.dragged
+                                        , fact =
+                                            Just
+                                                (RelationUse
+                                                    { identifier = relationUse.identifier
+                                                    , argument = futureArgumentUiState.value
+                                                    }
+                                                )
+                                        }
+                                    )
                 }
 
 
@@ -947,7 +970,7 @@ blockVerticalFactListSvg { dragState, elements, color, name, fact } =
         insertHoles =
             case elements of
                 [] ->
-                    factInsertHoleSvg dragState
+                    factInsertHoleSvg color dragState
                         |> sizedSvgFutureMap
                             (\futureUiState ->
                                 { dragged = Nothing
@@ -963,17 +986,14 @@ blockVerticalFactListSvg { dragState, elements, color, name, fact } =
 
                         Just dragged ->
                             case dragged.thing of
-                                DraggedValueLookup _ ->
-                                    []
-
-                                DraggedVariable _ ->
+                                DraggedValue _ ->
                                     []
 
                                 DraggedFact _ ->
                                     List.range 0 ((element0 :: element1Up) |> List.length)
                                         |> List.map
                                             (\insertIndex ->
-                                                factInsertHoleSvg (Just dragged)
+                                                factInsertHoleSvg color (Just dragged)
                                                     |> sizedSvgFutureMap
                                                         (\futureUiState ->
                                                             { dragged = Nothing
@@ -1066,7 +1086,8 @@ blockVerticalFactListSvg { dragState, elements, color, name, fact } =
                                     }
                         )
                 ]
-                ([ ( sideWidth + strokeWidth, headerHeight )
+                ([ ( sideWidth, headerHeight + strokeWidth )
+                 , ( sideWidth + strokeWidth, headerHeight )
                  , ( fullWidth, headerHeight )
                  , ( fullWidth, 0 )
                  , ( strokeWidth, 0 )
@@ -1076,41 +1097,17 @@ blockVerticalFactListSvg { dragState, elements, color, name, fact } =
                  , ( fullWidth, fullHeight )
                  , ( fullWidth, headerHeight + elementsAndInsertHolesSvg.height )
                  , ( sideWidth + strokeWidth, headerHeight + elementsAndInsertHolesSvg.height )
+                 , ( sideWidth, headerHeight + elementsAndInsertHolesSvg.height - strokeWidth )
                  ]
-                    ++ (case insertHoles of
-                            _ :: _ ->
-                                elementsAndInsertHolesSvg.svgs
-                                    |> List.indexedMap Tuple.pair
-                                    |> List.concatMap
-                                        (\( index, sub ) ->
-                                            if (index |> Basics.remainderBy 2) == 1 then
-                                                [ ( sideWidth + strokeWidth, headerHeight + sub.y )
-                                                , ( sideWidth, headerHeight + sub.y + strokeWidth )
-                                                , ( sideWidth, headerHeight + sub.y + sub.height - strokeWidth )
-                                                , ( sideWidth + strokeWidth, headerHeight + sub.y + sub.height )
-                                                ]
-
-                                            else
-                                                [ ( sideWidth + sub.width, headerHeight + sub.y )
-                                                , ( sideWidth + sub.width, headerHeight + sub.y + sub.height )
-                                                ]
-                                        )
-                                    |> List.reverse
-
-                            _ ->
-                                ( sideWidth, headerHeight + elementsAndInsertHolesSvg.height - strokeWidth )
-                                    :: (elementsAndInsertHolesSvg.svgs
-                                            |> List.drop 1
-                                            |> List.concatMap
-                                                (\partAsSvg ->
-                                                    [ ( sideWidth, headerHeight + partAsSvg.y - strokeWidth )
-                                                    , ( sideWidth + strokeWidth, headerHeight + partAsSvg.y )
-                                                    , ( sideWidth, headerHeight + partAsSvg.y + strokeWidth )
-                                                    ]
-                                                )
-                                       )
-                                    ++ [ ( sideWidth, headerHeight + strokeWidth )
-                                       ]
+                    ++ (elementsAndInsertHolesSvg.svgs
+                            |> List.drop 1
+                            |> List.concatMap
+                                (\partAsSvg ->
+                                    [ ( sideWidth, headerHeight + partAsSvg.y - strokeWidth )
+                                    , ( sideWidth + strokeWidth, headerHeight + partAsSvg.y )
+                                    , ( sideWidth, headerHeight + partAsSvg.y + strokeWidth )
+                                    ]
+                                )
                        )
                 )
     in
@@ -1199,7 +1196,7 @@ blockVerticalFactListShapeSvg config =
         branchesSvg =
             case config.elements of
                 [] ->
-                    Err factInsertHoleShapeSvg
+                    Err (factInsertHoleShapeSvg config.color)
 
                 branch0 :: branch1Up ->
                     (branch0 :: branch1Up)
@@ -1339,6 +1336,11 @@ factAnySvg dragState branches =
             )
 
 
+factNotBackgroundColor : Color
+factNotBackgroundColor =
+    Color.rgb 0.2 0.04 0
+
+
 factNotSvgWithInteractivity :
     { shapeListenModifier : Web.Dom.Modifier future
     , factInverseSvg : SizedSvg future
@@ -1375,7 +1377,7 @@ factNotSvgWithInteractivity parts =
         shapeSvg : SizedSvg future
         shapeSvg =
             svgPolygon
-                [ domModifierFillUniform (Color.rgb 0.2 0.04 0)
+                [ domModifierFillUniform factNotBackgroundColor
                 , parts.shapeListenModifier
                 ]
                 (case parts.maybeFactInverse of
@@ -1420,12 +1422,12 @@ factNotSvgWithInteractivity parts =
     }
 
 
-factInsertHoleSvg : DragState -> SizedSvg FactUiState
-factInsertHoleSvg dragState =
+factInsertHoleSvg : Color -> DragState -> SizedSvg FactUiState
+factInsertHoleSvg backgroundColor dragState =
     let
         shapeSvg : SizedSvg future_
         shapeSvg =
-            factInsertHoleShapeSvg
+            factInsertHoleShapeSvg backgroundColor
     in
     { height = shapeSvg.height
     , width = shapeSvg.width
@@ -1437,10 +1439,7 @@ factInsertHoleSvg dragState =
 
                 Just dragged ->
                     case dragged.thing of
-                        DraggedVariable _ ->
-                            Web.Dom.modifierNone
-
-                        DraggedValueLookup _ ->
+                        DraggedValue _ ->
                             Web.Dom.modifierNone
 
                         DraggedFact draggedFact ->
@@ -1452,8 +1451,8 @@ factInsertHoleSvg dragState =
     }
 
 
-factInsertHoleShapeSvg : SizedSvg future_
-factInsertHoleShapeSvg =
+factInsertHoleShapeSvg : Color -> SizedSvg future_
+factInsertHoleShapeSvg backgroundColor =
     let
         strokeWidth : Float
         strokeWidth =
@@ -1470,7 +1469,8 @@ factInsertHoleShapeSvg =
             strokeWidth + strokeWidth
     in
     svgPolygon
-        [ domModifierFillUniform missingThingColor
+        [ domModifierFillUniform
+            (backgroundColor |> colorBrightnessScaleBy missingThingBrightnessScale)
         ]
         [ ( 0, strokeWidth )
         , ( strokeWidth, 0 )
@@ -1507,10 +1507,6 @@ factEqualsSvgWithInteractivity parts =
         spaceWidth =
             fontWidth / 2
 
-        color : Color
-        color =
-            Color.rgb 0.2 0.2 0
-
         equalsTextSvg : SizedSvg future_
         equalsTextSvg =
             unselectableTextSvg "="
@@ -1526,7 +1522,7 @@ factEqualsSvgWithInteractivity parts =
         shapeSvg : SizedSvg future
         shapeSvg =
             svgPolygon
-                [ domModifierFillUniform color
+                [ domModifierFillUniform factRelationBackgroundColor
                 , parts.shapeEventListenModifier
                 ]
                 [ ( 0, strokeWidth )
@@ -1686,9 +1682,6 @@ relationUseSvgWithInteractivity parts =
 valueShapeSvg : ValueUiState -> SizedSvg future_
 valueShapeSvg value =
     case value of
-        ValueHole ->
-            valueHoleShapeSvg
-
         Variable variableName ->
             variableShapeSvg variableName
 
@@ -1699,17 +1692,10 @@ valueShapeSvg value =
 valueSvg :
     DragState
     -> ValueUiState
-    -> SizedSvg { dragged : DragState, value : ValueUiState }
+    -> SizedSvg { dragged : DragState, value : Maybe ValueUiState }
 valueSvg dragState =
     \value ->
         case value of
-            ValueHole ->
-                valueHoleSvg dragState
-                    |> sizedSvgFutureMap
-                        (\holeFuture ->
-                            { dragged = Nothing, value = holeFuture }
-                        )
-
             Variable variableName ->
                 variableName
                     |> variableSvg dragState
@@ -1719,10 +1705,10 @@ valueSvg dragState =
                             , value =
                                 case future.variable of
                                     Nothing ->
-                                        ValueHole
+                                        Nothing
 
                                     Just futureVariableName ->
-                                        Variable futureVariableName
+                                        Just (Variable futureVariableName)
                             }
                         )
 
@@ -1734,16 +1720,16 @@ valueSvg dragState =
                             , value =
                                 case future.valueLookup of
                                     Nothing ->
-                                        ValueHole
+                                        Nothing
 
                                     Just futureValueLookup ->
-                                        ValueLookup futureValueLookup
+                                        Just (ValueLookup futureValueLookup)
                             }
                         )
 
 
-valueLookupColor : Color
-valueLookupColor =
+valueLookupBackgroundColor : Color
+valueLookupBackgroundColor =
     Color.rgb 0 0.1 0.21
 
 
@@ -1787,7 +1773,7 @@ valueLookupSvg dragState valueLookup =
                                         , y = pointer.y
                                         , offsetX = -fontSize
                                         , offsetY = -fontSize
-                                        , thing = DraggedValueLookup valueLookup
+                                        , thing = DraggedValue (ValueLookup valueLookup)
                                         }
                                 , valueLookup = Nothing
                                 }
@@ -1798,7 +1784,7 @@ valueLookupSvg dragState valueLookup =
                 (\entryIndex entry ->
                     { key = entry.key
                     , value =
-                        valueSvg dragState entry.value
+                        valueOrHoleSvg valueLookupBackgroundColor dragState entry.value
                             |> sizedSvgFutureMap
                                 (\entryValueFuture ->
                                     { dragged = entryValueFuture.dragged
@@ -1826,7 +1812,7 @@ valueLookupShapeSvg valueLookup =
             |> List.indexedMap
                 (\entryIndex entry ->
                     { key = entry.key
-                    , value = valueShapeSvg entry.value
+                    , value = valueOrHoleShapeSvg valueLookupBackgroundColor entry.value
                     }
                 )
         )
@@ -1850,7 +1836,7 @@ valueLookupSvgWithInteractivity interactivity valueLookup =
         [] ->
             circleSvg { radius = radius }
                 [ interactivity.listenToDragStart
-                , domModifierFillUniform valueLookupColor
+                , domModifierFillUniform valueLookupBackgroundColor
                 , svgAttributeTranslate { x = radius, y = radius }
                 ]
 
@@ -1913,7 +1899,7 @@ valueLookupSvgWithInteractivity interactivity valueLookup =
                 shapeSvg =
                     svgRoundedRect
                         [ interactivity.listenToDragStart
-                        , domModifierFillUniform valueLookupColor
+                        , domModifierFillUniform valueLookupBackgroundColor
                         ]
                         { radius = radius, width = fullWidth, height = fullHeight }
                         |> .svg
@@ -2070,7 +2056,9 @@ variableSvg dragState variableName =
                     (\pointerDownEventPosition ->
                         case pointerDownEventPosition of
                             Err _ ->
-                                { dragged = dragState, variable = Just variableName }
+                                { dragged = dragState
+                                , variable = Just variableName
+                                }
 
                             Ok pointer ->
                                 { dragged =
@@ -2079,7 +2067,7 @@ variableSvg dragState variableName =
                                         , y = pointer.y
                                         , offsetX = -fontSize
                                         , offsetY = -fontSize
-                                        , thing = DraggedVariable variableName
+                                        , thing = DraggedValue (Variable variableName)
                                         }
                                 , variable = Nothing
                                 }
@@ -2139,17 +2127,32 @@ variableShapeSvg =
         }
 
 
-missingThingColor : Color
-missingThingColor =
-    Color.rgba 0 0 0 0.54
+missingThingBrightnessScale : Float
+missingThingBrightnessScale =
+    0.54
 
 
-valueHoleSvg : DragState -> SizedSvg ValueUiState
-valueHoleSvg dragState =
+colorBrightnessScaleBy : Float -> (Color -> Color)
+colorBrightnessScaleBy factor =
+    \color ->
+        let
+            colorComponents : { red : Float, green : Float, blue : Float, alpha : Float }
+            colorComponents =
+                color |> Color.toRgba
+        in
+        Color.rgba
+            (colorComponents.red * factor)
+            (colorComponents.green * factor)
+            (colorComponents.blue * factor)
+            colorComponents.alpha
+
+
+valueHoleSvg : Color -> DragState -> SizedSvg ValueUiState
+valueHoleSvg backgroundColor dragState =
     let
         shapeSvg : SizedSvg future_
         shapeSvg =
-            valueHoleShapeSvg
+            valueHoleShapeSvg backgroundColor
     in
     { width = shapeSvg.width
     , height = shapeSvg.height
@@ -2164,22 +2167,16 @@ valueHoleSvg dragState =
                         DraggedFact _ ->
                             Web.Dom.modifierNone
 
-                        DraggedValueLookup draggedValueLookup ->
+                        DraggedValue draggedValue ->
                             Web.Dom.listenTo "pointerup"
-                                |> Web.Dom.modifierFutureMap
-                                    (\_ -> ValueLookup draggedValueLookup)
-
-                        DraggedVariable draggedVariable ->
-                            Web.Dom.listenTo "pointerup"
-                                |> Web.Dom.modifierFutureMap
-                                    (\_ -> Variable draggedVariable)
+                                |> Web.Dom.modifierFutureMap (\_ -> draggedValue)
             ]
             [ shapeSvg.svg ]
     }
 
 
-valueHoleShapeSvg : SizedSvg future_
-valueHoleShapeSvg =
+valueHoleShapeSvg : Color -> SizedSvg future_
+valueHoleShapeSvg backgroundColor =
     let
         radius : Float
         radius =
@@ -2196,7 +2193,8 @@ valueHoleShapeSvg =
         backgroundSvg : Web.Dom.Node future_
         backgroundSvg =
             svgRoundedRect
-                [ domModifierFillUniform missingThingColor
+                [ domModifierFillUniform
+                    (backgroundColor |> colorBrightnessScaleBy missingThingBrightnessScale)
                 ]
                 { radius = radius, width = fullWidth, height = fullHeight }
                 |> .svg
