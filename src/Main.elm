@@ -313,7 +313,7 @@ interface state =
                         , svgsReverse =
                             soFar.svgsReverse
                                 |> (::)
-                                    (stackSvg
+                                    (svgStack
                                         [ svgAttributeTranslate { x = 0, y = soFar.height + 50 } ]
                                         [ definitionAsSvg.svg ]
                                     )
@@ -324,7 +324,7 @@ interface state =
                     }
                 |> .svgsReverse
                 |> List.reverse
-                |> stackSvg
+                |> svgStack
                     [ svgAttributeTranslate { x = 140, y = 140 } ]
             , state.strayThings
                 |> List.indexedMap
@@ -371,20 +371,20 @@ interface state =
                                     }
                                 )
                             |> List.singleton
-                            |> stackSvg
+                            |> svgStack
                                 [ svgAttributeTranslate
                                     { x = strayThing.x
                                     , y = strayThing.y
                                     }
                                 ]
                     )
-                |> stackSvg []
+                |> svgStack []
             , case state.dragged of
                 Nothing ->
-                    stackSvg [] []
+                    svgStack [] []
 
                 Just dragged ->
-                    stackSvg
+                    svgStack
                         [ svgAttributeTranslate
                             { x = dragged.x + dragged.offsetX
                             , y = dragged.y + dragged.offsetY
@@ -405,11 +405,11 @@ interface state =
         |> Web.interfaceBatch
 
 
-stackSvg :
+svgStack :
     List (Web.Dom.Modifier future)
     -> List (Web.Dom.Node future)
     -> Web.Dom.Node future
-stackSvg modifiers subs =
+svgStack modifiers subs =
     Web.Svg.element "g" modifiers subs
 
 
@@ -451,6 +451,20 @@ type alias SizedSvg future =
     { height : Float, width : Float, svg : Web.Dom.Node future }
 
 
+sizedSvgStack :
+    List (Web.Dom.Modifier future)
+    -> List (SizedSvg future)
+    -> SizedSvg future
+sizedSvgStack modifiers elements =
+    { width =
+        elements |> List.map .width |> List.maximum |> Maybe.withDefault 0
+    , height =
+        elements |> List.map .height |> List.maximum |> Maybe.withDefault 0
+    , svg =
+        elements |> List.map .svg |> svgStack modifiers
+    }
+
+
 unselectableTextSvg : String -> SizedSvg future_
 unselectableTextSvg string =
     { height = fontSize
@@ -460,10 +474,62 @@ unselectableTextSvg string =
             [ Web.Dom.style "user-select" "none"
             , Web.Dom.style "pointer-events" "none"
             , Web.Dom.attribute "x" (0 |> String.fromFloat)
-            , Web.Dom.attribute "y" (fontBaseline |> String.fromFloat)
+            , Web.Dom.attribute "y" (0.77 * fontSize |> String.fromFloat)
             , domModifierFillUniform (Color.rgb 1 1 1)
             ]
             [ Web.Dom.text string ]
+    }
+
+
+sizedSvgPad :
+    { left : Float, right : Float, top : Float, bottom : Float }
+    -> (SizedSvg future -> SizedSvg future)
+sizedSvgPad additionalPadding =
+    \sizedSvg ->
+        { width = sizedSvg.width + additionalPadding.left + additionalPadding.right
+        , height = sizedSvg.height + additionalPadding.bottom + additionalPadding.top
+        , svg =
+            svgStack
+                [ svgAttributeTranslate
+                    { x = additionalPadding.left
+                    , y = additionalPadding.top
+                    }
+                ]
+                [ sizedSvg.svg ]
+        }
+
+
+horizontalCenteredSvg : List (SizedSvg future) -> SizedSvg future
+horizontalCenteredSvg elements =
+    let
+        fullHeight : Float
+        fullHeight =
+            elements |> List.map .height |> List.maximum |> Maybe.withDefault 0
+
+        combined : { combinedWidth : Float, svgs : List (Web.Dom.Node future) }
+        combined =
+            elements
+                |> List.foldl
+                    (\element soFar ->
+                        { combinedWidth = soFar.combinedWidth + element.width
+                        , svgs =
+                            soFar.svgs
+                                |> (::)
+                                    (svgStack
+                                        [ svgAttributeTranslate
+                                            { x = soFar.combinedWidth
+                                            , y = (fullHeight - element.height) / 2
+                                            }
+                                        ]
+                                        [ element.svg ]
+                                    )
+                        }
+                    )
+                    { combinedWidth = 0, svgs = [] }
+    in
+    { height = fullHeight
+    , width = combined.combinedWidth
+    , svg = combined.svgs |> svgStack []
     }
 
 
@@ -487,7 +553,7 @@ horizontalSvg =
                                     |> (::)
                                         (asSvg.svg
                                             |> List.singleton
-                                            |> stackSvg
+                                            |> svgStack
                                                 [ svgAttributeTranslate { x = soFar.combinedWidth, y = 0 }
                                                 ]
                                         )
@@ -503,7 +569,7 @@ horizontalSvg =
         , svg =
             subsAsSvgs.svgsReverse
                 |> List.reverse
-                |> stackSvg []
+                |> svgStack []
         }
 
 
@@ -578,7 +644,7 @@ relationDefinitionSvg dragState definition =
 
         spaceWidth : Float
         spaceWidth =
-            fontWidth / 2
+            fontWidth
 
         parameterSvg : SizedSvg { dragged : DragState, value : Maybe ValueUiState }
         parameterSvg =
@@ -596,18 +662,42 @@ relationDefinitionSvg dragState definition =
         equalsTextSvg =
             unselectableTextSvg "="
 
-        headerHeight : Float
-        headerHeight =
-            List.maximum
-                [ nameSvg.height + strokeWidth
-                , parameterSvg.height
-                , equalsTextSvg.height + strokeWidth
+        headerContent :
+            SizedSvg
+                { dragged : DragState
+                , relationDefinition : { equivalentFact : Maybe FactUiState, parameter : Maybe ValueUiState }
+                }
+        headerContent =
+            horizontalCenteredSvg
+                [ nameSvg
+                    |> sizedSvgPad
+                        { left = 0
+                        , right = spaceWidth
+                        , top = strokeWidth / 2
+                        , bottom = strokeWidth / 2
+                        }
+                , parameterSvg
+                    |> sizedSvgFutureMap
+                        (\futureArgumentUiState ->
+                            { dragged = futureArgumentUiState.dragged
+                            , relationDefinition =
+                                { equivalentFact = definition.equivalentFact
+                                , parameter = futureArgumentUiState.value
+                                }
+                            }
+                        )
+                , equalsTextSvg
+                    |> sizedSvgPad
+                        { left = spaceWidth
+                        , right = 0
+                        , top = strokeWidth / 2
+                        , bottom = strokeWidth / 2
+                        }
                 ]
-                |> Maybe.withDefault 0
 
         fullHeight : Float
         fullHeight =
-            Basics.max headerHeight equivalentFactSvg.height
+            Basics.max headerContent.height equivalentFactSvg.height
 
         shapeSvg : SizedSvg future_
         shapeSvg =
@@ -629,48 +719,24 @@ relationDefinitionSvg dragState definition =
     { height = fullHeight
     , width = fullWidth
     , svg =
-        stackSvg
+        svgStack
             []
             [ shapeSvg.svg
-            , stackSvg
+            , svgStack
                 [ svgAttributeTranslate
                     { x = strokeWidth
-                    , y = strokeWidth / 2 + (headerHeight - nameSvg.height) / 2
-                    }
-                ]
-                [ nameSvg.svg ]
-            , stackSvg
-                [ svgAttributeTranslate
-                    { x = strokeWidth + nameSvg.width + spaceWidth
                     , y = 0
                     }
                 ]
-                [ parameterSvg.svg
-                    |> Web.Dom.futureMap
-                        (\futureArgumentUiState ->
-                            { dragged = futureArgumentUiState.dragged
-                            , relationDefinition =
-                                { equivalentFact = definition.equivalentFact
-                                , parameter = futureArgumentUiState.value
-                                }
-                            }
-                        )
-                ]
-            , stackSvg
-                [ svgAttributeTranslate
-                    { x = strokeWidth + nameSvg.width + spaceWidth + parameterSvg.width + spaceWidth
-                    , y = strokeWidth / 2 + (headerHeight - equalsTextSvg.height) / 2
-                    }
-                ]
-                [ equalsTextSvg.svg ]
-            , stackSvg
+                [ headerContent.svg ]
+            , svgStack
                 [ svgAttributeTranslate
                     { x = headerWidth
                     , y = (fullHeight - equivalentFactSvg.height) / 2
                     }
                 ]
-                [ equivalentFactSvg.svg
-                    |> Web.Dom.futureMap
+                [ equivalentFactSvg
+                    |> sizedSvgFutureMap
                         (\equivalentFactUiState ->
                             { dragged = equivalentFactUiState.dragged
                             , relationDefinition =
@@ -679,6 +745,7 @@ relationDefinitionSvg dragState definition =
                                 }
                             }
                         )
+                    |> .svg
                 ]
             ]
     }
@@ -1112,17 +1179,17 @@ blockVerticalFactListSvg config =
     { width = shapeSvg.width
     , height = shapeSvg.height
     , svg =
-        stackSvg
+        svgStack
             []
             [ shapeSvg.svg
-            , stackSvg
+            , svgStack
                 [ svgAttributeTranslate
                     { x = sideWidth
-                    , y = strokeWidth
+                    , y = strokeWidth / 2
                     }
                 ]
                 [ blockNameStringSvg.svg ]
-            , stackSvg
+            , svgStack
                 [ svgAttributeTranslate { x = sideWidth, y = headerHeight } ]
                 [ elementsAndInsertHolesSvg
                     |> .svg
@@ -1211,17 +1278,17 @@ blockVerticalFactListShapeSvg config =
     { width = shapeSvg.width
     , height = shapeSvg.height
     , svg =
-        stackSvg
+        svgStack
             []
             [ shapeSvg.svg
-            , stackSvg
+            , svgStack
                 [ svgAttributeTranslate
                     { x = sideWidth
-                    , y = (fontSize + strokeWidth) / 2
+                    , y = strokeWidth / 2
                     }
                 ]
                 [ blockNameTextSvg.svg ]
-            , stackSvg
+            , svgStack
                 [ svgAttributeTranslate { x = sideWidth, y = headerHeight } ]
                 [ elementsSvg.svg ]
             ]
@@ -1300,17 +1367,17 @@ factNotSvgWithInteractivity parts =
     { width = fullWidth
     , height = fullHeight
     , svg =
-        stackSvg
+        svgStack
             []
             [ shapeSvg.svg
-            , stackSvg
+            , svgStack
                 [ svgAttributeTranslate
                     { x = strokeWidth
-                    , y = (fontSize + strokeWidth) / 2
+                    , y = strokeWidth / 2
                     }
                 ]
                 [ notTextSvg.svg ]
-            , stackSvg
+            , svgStack
                 [ svgAttributeTranslate { x = headerWidth, y = 0 } ]
                 [ parts.factInverseSvg.svg ]
             ]
@@ -1327,7 +1394,7 @@ factInsertHoleSvg backgroundColor dragState =
     { height = shapeSvg.height
     , width = shapeSvg.width
     , svg =
-        stackSvg
+        svgStack
             [ case dragState of
                 Nothing ->
                     Web.Dom.modifierNone
@@ -1382,13 +1449,7 @@ factEqualsSvgWithInteractivity parts =
     let
         fullWidth : Float
         fullWidth =
-            strokeWidth
-                + parts.valueASvg.width
-                + spaceWidth
-                + equalsTextSvg.width
-                + spaceWidth
-                + parts.valueBSvg.width
-                + strokeWidth
+            strokeWidth + contentSvg.width + strokeWidth
 
         spaceWidth : Float
         spaceWidth =
@@ -1398,13 +1459,19 @@ factEqualsSvgWithInteractivity parts =
         equalsTextSvg =
             unselectableTextSvg "="
 
-        fullHeight : Float
-        fullHeight =
-            Basics.max
-                parts.valueASvg.height
-                (Basics.max (equalsTextSvg.height + strokeWidth)
-                    parts.valueBSvg.height
-                )
+        contentSvg : SizedSvg future
+        contentSvg =
+            horizontalCenteredSvg
+                [ parts.valueASvg
+                , equalsTextSvg
+                    |> sizedSvgPad
+                        { left = spaceWidth
+                        , right = spaceWidth
+                        , top = 0
+                        , bottom = 0
+                        }
+                , parts.valueBSvg
+                ]
 
         shapeSvg : SizedSvg future
         shapeSvg =
@@ -1415,38 +1482,24 @@ factEqualsSvgWithInteractivity parts =
                 [ ( 0, strokeWidth )
                 , ( strokeWidth, 0 )
                 , ( fullWidth, 0 )
-                , ( fullWidth, fullHeight )
-                , ( strokeWidth, fullHeight )
-                , ( 0, fullHeight - strokeWidth )
+                , ( fullWidth, contentSvg.height )
+                , ( strokeWidth, contentSvg.height )
+                , ( 0, contentSvg.height - strokeWidth )
                 ]
     in
     { height = shapeSvg.height
     , width = shapeSvg.width
     , svg =
-        stackSvg
+        svgStack
             []
             [ shapeSvg.svg
-            , stackSvg
+            , svgStack
                 [ svgAttributeTranslate
                     { x = strokeWidth
-                    , y = (fullHeight - parts.valueASvg.height) / 2
+                    , y = 0
                     }
                 ]
-                [ parts.valueASvg.svg ]
-            , stackSvg
-                [ svgAttributeTranslate
-                    { x = strokeWidth + parts.valueASvg.width + spaceWidth
-                    , y = fullHeight / 2
-                    }
-                ]
-                [ equalsTextSvg.svg ]
-            , stackSvg
-                [ svgAttributeTranslate
-                    { x = strokeWidth + parts.valueASvg.width + spaceWidth + equalsTextSvg.width + spaceWidth
-                    , y = (fullHeight - parts.valueBSvg.height) / 2
-                    }
-                ]
-                [ parts.valueBSvg.svg ]
+                [ contentSvg.svg ]
             ]
     }
 
@@ -1499,26 +1552,30 @@ relationUseSvgWithInteractivity :
     -> SizedSvg future
 relationUseSvgWithInteractivity parts =
     let
-        fullWidth : Float
-        fullWidth =
-            strokeWidth
-                + identifierTextSvg.width
-                + spaceWidth
-                + parts.argumentAsSvg.width
-                + strokeWidth
-
         spaceWidth : Float
         spaceWidth =
-            fontWidth / 2
+            fontWidth
 
         identifierTextSvg : SizedSvg future_
         identifierTextSvg =
             unselectableTextSvg parts.identifier
 
-        fullHeight : Float
-        fullHeight =
-            Basics.max (identifierTextSvg.height + strokeWidth)
-                parts.argumentAsSvg.height
+        contentSvg : SizedSvg future
+        contentSvg =
+            horizontalCenteredSvg
+                [ identifierTextSvg
+                    |> sizedSvgPad
+                        { top = strokeWidth / 2
+                        , bottom = strokeWidth / 2
+                        , left = 0
+                        , right = spaceWidth
+                        }
+                , parts.argumentAsSvg
+                ]
+
+        fullWidth : Float
+        fullWidth =
+            strokeWidth + contentSvg.width + strokeWidth
 
         shapeSvg : SizedSvg future
         shapeSvg =
@@ -1529,31 +1586,24 @@ relationUseSvgWithInteractivity parts =
                 [ ( 0, strokeWidth )
                 , ( strokeWidth, 0 )
                 , ( fullWidth, 0 )
-                , ( fullWidth, fullHeight )
-                , ( strokeWidth, fullHeight )
-                , ( 0, fullHeight - strokeWidth )
+                , ( fullWidth, contentSvg.height )
+                , ( strokeWidth, contentSvg.height )
+                , ( 0, contentSvg.height - strokeWidth )
                 ]
     in
-    { height = fullHeight
+    { height = contentSvg.height
     , width = fullWidth
     , svg =
-        stackSvg
+        svgStack
             []
             [ shapeSvg.svg
-            , stackSvg
+            , svgStack
                 [ svgAttributeTranslate
                     { x = strokeWidth
-                    , y = fullHeight / 2
-                    }
-                ]
-                [ identifierTextSvg.svg ]
-            , stackSvg
-                [ svgAttributeTranslate
-                    { x = strokeWidth + identifierTextSvg.width + spaceWidth
                     , y = 0
                     }
                 ]
-                [ parts.argumentAsSvg.svg ]
+                [ contentSvg.svg ]
             ]
     }
 
@@ -1717,33 +1767,19 @@ valueLookupSvgWithInteractivity interactivity valueLookup =
                                     entryNameSvg : SizedSvg future_
                                     entryNameSvg =
                                         unselectableTextSvg entryKey
-
-                                    entryFullHeight : Float
-                                    entryFullHeight =
-                                        Basics.max (entryNameSvg.height + fontSize)
-                                            entryValueSvg.height
                                 in
-                                { width = entryNameSvg.width + fontWidth + entryValueSvg.width
-                                , height = entryFullHeight
-                                , svg =
-                                    stackSvg []
-                                        [ stackSvg
-                                            [ svgAttributeTranslate
-                                                { x = 0
-                                                , y = fontSize / 2 + (entryFullHeight - fontSize) / 2
-                                                }
-                                            , Web.Dom.style "font-style" "italic"
-                                            ]
-                                            [ entryNameSvg.svg ]
-                                        , stackSvg
-                                            [ svgAttributeTranslate
-                                                { x = entryNameSvg.width + fontWidth
-                                                , y = 0
-                                                }
-                                            ]
-                                            [ entryValueSvg.svg ]
-                                        ]
-                                }
+                                horizontalCenteredSvg
+                                    [ entryNameSvg
+                                        |> sizedSvgPad
+                                            { left = 0
+                                            , top = 0
+                                            , bottom = 0
+                                            , right = fontWidth
+                                            }
+                                        |> List.singleton
+                                        |> sizedSvgStack [ Web.Dom.style "font-style" "italic" ]
+                                    , entryValueSvg
+                                    ]
                             )
                         |> verticalSvg
 
@@ -1767,12 +1803,12 @@ valueLookupSvgWithInteractivity interactivity valueLookup =
             { width = fullWidth
             , height = fullHeight
             , svg =
-                stackSvg
+                svgStack
                     []
                     [ shapeSvg
                     , entryListSvg.svg
                         |> List.singleton
-                        |> stackSvg
+                        |> svgStack
                             [ svgAttributeTranslate { x = radius, y = 0 }
                             ]
                     ]
@@ -1801,7 +1837,7 @@ verticalSvg =
                                     |> (::)
                                         (asSvg.svg
                                             |> List.singleton
-                                            |> stackSvg
+                                            |> svgStack
                                                 [ svgAttributeTranslate
                                                     { x = 0, y = soFar.combinedHeight }
                                                 ]
@@ -1818,13 +1854,8 @@ verticalSvg =
         , svg =
             elementsAsSvgs.svgsReverse
                 |> List.reverse
-                |> stackSvg []
+                |> svgStack []
         }
-
-
-fontBaseline : Float
-fontBaseline =
-    fontSize * 0.3
 
 
 fontWidth : Float
@@ -1872,7 +1903,7 @@ variableSvg dragState variableName =
     { width = shape.width
     , height = shape.height
     , svg =
-        stackSvg
+        svgStack
             [ domListenToPointerDown
                 |> Web.Dom.modifierFutureMap
                     (\pointerDownEventPosition ->
@@ -1935,13 +1966,13 @@ variableShapeSvg =
         { width = fullWidth
         , height = fullHeight
         , svg =
-            stackSvg
+            svgStack
                 []
                 [ backgroundSvg
-                , stackSvg
+                , svgStack
                     [ svgAttributeTranslate
                         { x = radius
-                        , y = radius
+                        , y = radius / 2
                         }
                     ]
                     [ nameSvg.svg ]
@@ -1979,7 +2010,7 @@ valueHoleSvg backgroundColor dragState =
     { width = shapeSvg.width
     , height = shapeSvg.height
     , svg =
-        stackSvg
+        svgStack
             [ case dragState of
                 Nothing ->
                     Web.Dom.modifierNone
