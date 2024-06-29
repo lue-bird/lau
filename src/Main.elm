@@ -145,7 +145,7 @@ initialState =
                                 |> Just
                             )
                         , Equal
-                            { a = Variable "Interface" |> Just
+                            { a = Variable "interface" |> Just
                             , b =
                                 ValueLookup
                                     (FastDict.singleton "svg render"
@@ -526,9 +526,9 @@ factOrHoleSvg backgroundColor dragState fact =
             factSvg dragState equivalentFact
 
 
-factRelationBackgroundColor : Color
-factRelationBackgroundColor =
-    Color.rgb 0.2 0.2 0
+relationBackgroundColor : Color
+relationBackgroundColor =
+    Color.rgb 0.22 0.14 0
 
 
 relationDefinitionSvg :
@@ -572,11 +572,11 @@ relationDefinitionSvg dragState definition =
 
         parameterSvg : SizedSvg { dragged : DragState, value : Maybe ValueUiState }
         parameterSvg =
-            valueOrHoleSvg factRelationBackgroundColor dragState definition.parameter
+            valueOrHoleSvg relationBackgroundColor dragState definition.parameter
 
         equivalentFactSvg : SizedSvg { dragged : DragState, fact : Maybe FactUiState }
         equivalentFactSvg =
-            factOrHoleSvg factRelationBackgroundColor dragState definition.equivalentFact
+            factOrHoleSvg relationBackgroundColor dragState definition.equivalentFact
 
         nameSvg : SizedSvg future_
         nameSvg =
@@ -602,7 +602,7 @@ relationDefinitionSvg dragState definition =
         shapeSvg : SizedSvg future_
         shapeSvg =
             svgPolygon
-                [ domModifierFillUniform factRelationBackgroundColor
+                [ domModifierFillUniform relationBackgroundColor
                 ]
                 [ ( 0, 0 )
                 , ( headerWidth, 0 )
@@ -687,8 +687,8 @@ factNotShapeSvg maybeFactInverse =
 equalsShapeSvg : { a : Maybe ValueUiState, b : Maybe ValueUiState } -> SizedSvg future_
 equalsShapeSvg toEquate =
     factEqualsSvgWithInteractivity
-        { valueASvg = valueOrHoleShapeSvg factRelationBackgroundColor toEquate.a
-        , valueBSvg = valueOrHoleShapeSvg factRelationBackgroundColor toEquate.b
+        { valueASvg = valueOrHoleShapeSvg relationBackgroundColor toEquate.a
+        , valueBSvg = valueOrHoleShapeSvg relationBackgroundColor toEquate.b
         , shapeEventListenModifier = Web.Dom.modifierNone
         }
 
@@ -699,7 +699,7 @@ relationUseShapeSvg relationUse =
         { shapeEventListenModifier = Web.Dom.modifierNone
         , identifier = relationUse.identifier
         , argumentAsSvg =
-            valueOrHoleShapeSvg factRelationBackgroundColor relationUse.argument
+            valueOrHoleShapeSvg relationBackgroundColor relationUse.argument
         }
 
 
@@ -857,7 +857,7 @@ factSvg dragState fact =
         Equal toEquate ->
             factEqualsSvgWithInteractivity
                 { valueASvg =
-                    valueOrHoleSvg factRelationBackgroundColor dragState toEquate.a
+                    valueOrHoleSvg relationBackgroundColor dragState toEquate.a
                         |> sizedSvgFutureMap
                             (\futureA ->
                                 { dragged = futureA.dragged
@@ -865,7 +865,7 @@ factSvg dragState fact =
                                 }
                             )
                 , valueBSvg =
-                    valueOrHoleSvg factRelationBackgroundColor dragState toEquate.b
+                    valueOrHoleSvg relationBackgroundColor dragState toEquate.b
                         |> sizedSvgFutureMap
                             (\futureB ->
                                 { dragged = futureB.dragged
@@ -922,7 +922,7 @@ factSvg dragState fact =
                 , argumentAsSvg =
                     case relationUse.argument of
                         Nothing ->
-                            valueHoleSvg factRelationBackgroundColor dragState
+                            valueHoleSvg relationBackgroundColor dragState
                                 |> sizedSvgFutureMap
                                     (\futureArgumentUiState ->
                                         { dragged = Nothing
@@ -957,9 +957,14 @@ factAllShapeSvg : List FactUiState -> SizedSvg future_
 factAllShapeSvg parts =
     blockVerticalFactListShapeSvg
         { name = "all"
-        , color = Color.rgb 0 0.14 0
+        , color = factAllBackgroundColor
         , elements = parts
         }
+
+
+factAllBackgroundColor : Color
+factAllBackgroundColor =
+    Color.rgb 0.01 0.14 0
 
 
 factAllSvg :
@@ -972,7 +977,7 @@ factAllSvg dragState parts =
         , fact = All parts
         , dragState = dragState
         , elements = parts
-        , color = Color.rgb 0 0.14 0
+        , color = factAllBackgroundColor
         }
         |> sizedSvgFutureMap
             (\future ->
@@ -1172,9 +1177,14 @@ factAnyShapeSvg : List FactUiState -> SizedSvg future_
 factAnyShapeSvg branches =
     blockVerticalFactListShapeSvg
         { name = "any"
-        , color = Color.rgb 0.2 0 0.2
+        , color = factAnyBackgroundColor
         , elements = branches
         }
+
+
+factAnyBackgroundColor : Color
+factAnyBackgroundColor =
+    Color.rgb 0.15 0 0.1
 
 
 blockVerticalFactListShapeSvg :
@@ -1277,7 +1287,7 @@ factAnySvg dragState branches =
         , fact = Any branches
         , dragState = dragState
         , elements = branches
-        , color = Color.rgb 0.2 0 0.2
+        , color = factAnyBackgroundColor
         }
         |> sizedSvgFutureMap
             (\future ->
@@ -1289,7 +1299,7 @@ factAnySvg dragState branches =
 
 factNotBackgroundColor : Color
 factNotBackgroundColor =
-    Color.rgb 0.2 0.04 0
+    Color.rgb 0.24 0.06 0
 
 
 factNotSvgWithInteractivity :
@@ -1473,7 +1483,7 @@ factEqualsSvgWithInteractivity parts =
         shapeSvg : SizedSvg future
         shapeSvg =
             svgPolygon
-                [ domModifierFillUniform factRelationBackgroundColor
+                [ domModifierFillUniform relationBackgroundColor
                 , parts.shapeEventListenModifier
                 ]
                 [ ( 0, strokeWidth )
@@ -1579,10 +1589,6 @@ relationUseSvgWithInteractivity parts =
         spaceWidth =
             fontWidth / 2
 
-        color : Color
-        color =
-            Color.rgb 0.2 0.2 0
-
         identifierTextSvg : SizedSvg future_
         identifierTextSvg =
             unselectableTextSvg parts.identifier
@@ -1595,7 +1601,7 @@ relationUseSvgWithInteractivity parts =
         shapeSvg : SizedSvg future
         shapeSvg =
             svgPolygon
-                [ domModifierFillUniform color
+                [ domModifierFillUniform relationBackgroundColor
                 , parts.shapeEventListenModifier
                 ]
                 [ ( 0, strokeWidth )
@@ -1681,7 +1687,7 @@ valueSvg dragState =
 
 valueLookupBackgroundColor : Color
 valueLookupBackgroundColor =
-    Color.rgb 0 0.1 0.21
+    Color.rgb 0 0.06 0.19
 
 
 circleSvg : { radius : Float } -> List (Web.Dom.Modifier future) -> SizedSvg future
@@ -1998,9 +2004,9 @@ variableSvg dragState variableName =
     }
 
 
-variableColor : Color
-variableColor =
-    Color.rgb 0.3 0.1 0
+variableBackgroundColor : Color
+variableBackgroundColor =
+    Color.rgb 0 0.21 0.18
 
 
 variableShapeSvg : String -> SizedSvg future_
@@ -2026,7 +2032,7 @@ variableShapeSvg =
             backgroundSvg : Web.Dom.Node future_
             backgroundSvg =
                 svgRoundedRect
-                    [ domModifierFillUniform variableColor
+                    [ domModifierFillUniform variableBackgroundColor
                     ]
                     { radius = radius, width = fullWidth, height = fullHeight }
                     |> .svg
