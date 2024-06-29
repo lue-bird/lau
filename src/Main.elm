@@ -1,4 +1,4 @@
-port module Main exposing (State, main)
+port module Main exposing (BlockUiState(..), DragState, FactUiState(..), State, ValueUiState(..), main)
 
 {- dev notes
 
@@ -70,26 +70,6 @@ type ValueUiState
     | ValueLookup (FastDict.Dict String (Maybe ValueUiState))
 
 
-valueUiStateToLau : ValueUiState -> Maybe (Lau.ValueWithVariableName String)
-valueUiStateToLau =
-    \valueWithHoles ->
-        case valueWithHoles of
-            Variable variableName ->
-                Lau.Variable variableName |> Just
-
-            ValueLookup entriesWithHoles ->
-                Maybe.map Lau.ValueLookup
-                    (entriesWithHoles
-                        |> FastDict.toList
-                        |> List.LocalExtra.allJustMap
-                            (\( entryKey, maybeEntryValue ) ->
-                                Maybe.map (\entryValue -> ( entryKey, entryValue ))
-                                    (maybeEntryValue |> Maybe.andThen valueUiStateToLau)
-                            )
-                        |> Maybe.map FastDict.fromList
-                    )
-
-
 factUiStateToLau : FactUiState -> Maybe Lau.Fact
 factUiStateToLau =
     \factWithHoles ->
@@ -119,6 +99,26 @@ factUiStateToLau =
             Any branchesWithHoles ->
                 Maybe.map Lau.Any
                     (branchesWithHoles |> List.LocalExtra.allJustMap factUiStateToLau)
+
+
+valueUiStateToLau : ValueUiState -> Maybe (Lau.ValueWithVariableName String)
+valueUiStateToLau =
+    \valueWithHoles ->
+        case valueWithHoles of
+            Variable variableName ->
+                Lau.Variable variableName |> Just
+
+            ValueLookup entriesWithHoles ->
+                Maybe.map Lau.ValueLookup
+                    (entriesWithHoles
+                        |> FastDict.toList
+                        |> List.LocalExtra.allJustMap
+                            (\( entryKey, maybeEntryValue ) ->
+                                Maybe.map (\entryValue -> ( entryKey, entryValue ))
+                                    (maybeEntryValue |> Maybe.andThen valueUiStateToLau)
+                            )
+                        |> Maybe.map FastDict.fromList
+                    )
 
 
 main : Web.Program State
@@ -196,6 +196,1215 @@ initialState =
             }
     , strayThings = []
     }
+
+
+factShapeSvg : FactUiState -> SizedSvg future_
+factShapeSvg fact =
+    case fact of
+        All parts ->
+            factAllShapeSvg parts
+
+        Any branches ->
+            factAnyShapeSvg branches
+
+        Not maybeFactInverse ->
+            factNotShapeSvg maybeFactInverse
+
+        Equal toEquate ->
+            equalsShapeSvg toEquate
+
+        RelationUse relationUse ->
+            relationUseShapeSvg relationUse
+
+
+fontSize : Float
+fontSize =
+    20
+
+
+strokeWidth : Float
+strokeWidth =
+    fontSize
+
+
+missingThingBrightnessScale : Float
+missingThingBrightnessScale =
+    0.54
+
+
+colorBrightnessScaleBy : Float -> (Color -> Color)
+colorBrightnessScaleBy factor =
+    \color ->
+        let
+            colorComponents : { red : Float, green : Float, blue : Float, alpha : Float }
+            colorComponents =
+                color |> Color.toRgba
+        in
+        Color.rgba
+            (colorComponents.red * factor)
+            (colorComponents.green * factor)
+            (colorComponents.blue * factor)
+            colorComponents.alpha
+
+
+svgRoundedRect :
+    List (Web.Dom.Modifier future)
+    -> { width : Float, height : Float, radius : Float }
+    -> SizedSvg future
+svgRoundedRect modifiers geometry =
+    { width = geometry.width
+    , height = geometry.height
+    , svg =
+        svgClosedPath
+            modifiers
+            { start = { x = 0, y = geometry.radius }
+            , trail =
+                [ pathSegmentTopLeftQuarterArcCounterclockwise { radius = geometry.radius, end = { x = geometry.radius, y = 0 } }
+                , [ Svg.PathD.L ( geometry.width - geometry.radius, 0 ) ]
+                , pathSegmentTopRightQuarterArcCounterclockwise { radius = geometry.radius, end = { x = geometry.width, y = geometry.radius } }
+                , [ Svg.PathD.L ( geometry.width, geometry.height - geometry.radius ) ]
+                , pathSegmentBottomRightQuarterArcCounterclockwise { radius = geometry.radius, end = { x = geometry.width - geometry.radius, y = geometry.height } }
+                , [ Svg.PathD.L ( geometry.radius, geometry.height ) ]
+                , pathSegmentBottomLeftQuarterArcCounterclockwise { radius = geometry.radius, end = { x = 0, y = geometry.height - geometry.radius } }
+                , [ Svg.PathD.L ( 0, geometry.radius ) ]
+                ]
+                    |> List.concat
+            }
+    }
+
+
+svgClosedPath :
+    List (Web.Dom.Modifier future)
+    -> { start : { x : Float, y : Float }, trail : List Svg.PathD.Segment }
+    -> Web.Dom.Node future
+svgClosedPath modifiers segments =
+    Web.Svg.element "path"
+        (Web.Dom.attribute "d"
+            (Svg.PathD.pathD
+                (case segments.trail of
+                    [] ->
+                        []
+
+                    trailSegment0 :: trailSegment1Up ->
+                        Svg.PathD.M ( segments.start.x, segments.start.y )
+                            :: (trailSegment0 :: trailSegment1Up)
+                            ++ [ Svg.PathD.Z ]
+                )
+            )
+            :: modifiers
+        )
+        []
+
+
+pathDArc :
+    { centerX : Float
+    , centerY : Float
+    , radius : Float
+    , startAngle : Angle
+    , angleSpan : Angle
+    }
+    -> List Svg.PathD.Segment
+pathDArc geometry =
+    let
+        arcGeometry : Arc2d.Arc2d Length.Meters coordinates
+        arcGeometry =
+            Arc2d.with
+                { centerPoint = Point2d.meters geometry.centerX geometry.centerY
+                , startAngle = geometry.startAngle |> Angle.normalize
+                , sweptAngle = geometry.angleSpan |> Angle.normalize
+                , radius = Length.meters geometry.radius
+                }
+
+        maxSegmentAngle : Angle
+        maxSegmentAngle =
+            Angle.turns (1 / 3)
+
+        numSegments : Int
+        numSegments =
+            1 + floor (abs (Quantity.ratio (arcGeometry |> Arc2d.sweptAngle) maxSegmentAngle))
+    in
+    Parameter1d.trailing numSegments
+        (\parameterValue ->
+            Svg.PathD.A
+                ( Arc2d.radius arcGeometry |> Length.inMeters
+                , Arc2d.radius arcGeometry |> Length.inMeters
+                )
+                0
+                False
+                (arcGeometry |> Arc2d.sweptAngle |> Quantity.greaterThanOrEqualTo Quantity.zero)
+                (Arc2d.pointOn arcGeometry parameterValue |> Point2d.toTuple Length.inMeters)
+        )
+
+
+pathSegmentTopRightQuarterArcCounterclockwise :
+    { end : { x : Float, y : Float }, radius : Float }
+    -> List Svg.PathD.Segment
+pathSegmentTopRightQuarterArcCounterclockwise geometry =
+    pathDArc
+        { centerX = geometry.end.x - geometry.radius
+        , centerY = geometry.end.y
+        , radius = geometry.radius
+        , startAngle = Angle.turns (3 / 4)
+        , angleSpan = Angle.turns (1 / 4)
+        }
+
+
+pathSegmentTopLeftQuarterArcCounterclockwise :
+    { end : { x : Float, y : Float }, radius : Float }
+    -> List Svg.PathD.Segment
+pathSegmentTopLeftQuarterArcCounterclockwise geometry =
+    pathDArc
+        { centerX = geometry.end.x
+        , centerY = geometry.end.y + geometry.radius
+        , radius = geometry.radius
+        , startAngle = Angle.turns (1 / 2)
+        , angleSpan = Angle.turns (1 / 4)
+        }
+
+
+pathSegmentBottomLeftQuarterArcCounterclockwise :
+    { end : { x : Float, y : Float }, radius : Float }
+    -> List Svg.PathD.Segment
+pathSegmentBottomLeftQuarterArcCounterclockwise geometry =
+    pathDArc
+        { centerX = geometry.end.x + geometry.radius
+        , centerY = geometry.end.y
+        , radius = geometry.radius
+        , startAngle = Angle.turns (1 / 4)
+        , angleSpan = Angle.turns (1 / 4)
+        }
+
+
+pathSegmentBottomRightQuarterArcCounterclockwise :
+    { end : { x : Float, y : Float }, radius : Float }
+    -> List Svg.PathD.Segment
+pathSegmentBottomRightQuarterArcCounterclockwise geometry =
+    pathDArc
+        { centerX = geometry.end.x
+        , centerY = geometry.end.y - geometry.radius
+        , radius = geometry.radius
+        , startAngle = Angle.turns 0
+        , angleSpan = Angle.turns (1 / 4)
+        }
+
+
+domModifierFillUniform : Color -> Web.Dom.Modifier future_
+domModifierFillUniform color =
+    Web.Dom.attribute "fill" (color |> Color.toCssString)
+
+
+valueHoleShapeSvg : Color -> SizedSvg future_
+valueHoleShapeSvg backgroundColor =
+    let
+        radius : Float
+        radius =
+            strokeWidth
+
+        fullWidth : Float
+        fullWidth =
+            fontSize * 5 + radius * 2
+
+        fullHeight : Float
+        fullHeight =
+            fontSize + radius
+
+        backgroundSvg : Web.Dom.Node future_
+        backgroundSvg =
+            svgRoundedRect
+                [ domModifierFillUniform
+                    (backgroundColor |> colorBrightnessScaleBy missingThingBrightnessScale)
+                ]
+                { radius = radius, width = fullWidth, height = fullHeight }
+                |> .svg
+    in
+    { width = fullWidth
+    , height = fullHeight
+    , svg = backgroundSvg
+    }
+
+
+valueOrHoleShapeSvg : Color -> Maybe ValueUiState -> SizedSvg future_
+valueOrHoleShapeSvg backgroundColor maybeValue =
+    case maybeValue of
+        Just value ->
+            valueShapeSvg value
+
+        Nothing ->
+            valueHoleShapeSvg backgroundColor
+
+
+fontWidth : Float
+fontWidth =
+    fontSize * 0.42
+
+
+unselectableTextSvg : String -> SizedSvg future_
+unselectableTextSvg string =
+    { height = fontSize
+    , width = (string |> String.length |> Basics.toFloat) * fontWidth
+    , svg =
+        Web.Svg.element "text"
+            [ Web.Dom.style "user-select" "none"
+            , Web.Dom.style "pointer-events" "none"
+            , Web.Dom.attribute "x" (0 |> String.fromFloat)
+            , Web.Dom.attribute "y" (0.77 * fontSize |> String.fromFloat)
+            , domModifierFillUniform (Color.rgb 1 1 1)
+            ]
+            [ Web.Dom.text string ]
+    }
+
+
+svgStack :
+    List (Web.Dom.Modifier future)
+    -> List (Web.Dom.Node future)
+    -> Web.Dom.Node future
+svgStack modifiers subs =
+    Web.Svg.element "g" modifiers subs
+
+
+svgAttributeTranslate : { x : Float, y : Float } -> Web.Dom.Modifier future_
+svgAttributeTranslate offset =
+    Web.Dom.attribute "transform"
+        ([ "translate("
+         , offset.x |> String.fromFloat
+         , " "
+         , offset.y |> String.fromFloat
+         , ")"
+         ]
+            |> String.concat
+        )
+
+
+sizedSvgPad :
+    { left : Float, right : Float, top : Float, bottom : Float }
+    -> (SizedSvg future -> SizedSvg future)
+sizedSvgPad additionalPadding =
+    \sizedSvg ->
+        { width = sizedSvg.width + additionalPadding.left + additionalPadding.right
+        , height = sizedSvg.height + additionalPadding.bottom + additionalPadding.top
+        , svg =
+            svgStack
+                [ svgAttributeTranslate
+                    { x = additionalPadding.left
+                    , y = additionalPadding.top
+                    }
+                ]
+                [ sizedSvg.svg ]
+        }
+
+
+horizontalCenteredSvg : List (SizedSvg future) -> SizedSvg future
+horizontalCenteredSvg elements =
+    let
+        fullHeight : Float
+        fullHeight =
+            elements |> List.map .height |> List.maximum |> Maybe.withDefault 0
+
+        combined : { combinedWidth : Float, svgs : List (Web.Dom.Node future) }
+        combined =
+            elements
+                |> List.foldl
+                    (\element soFar ->
+                        { combinedWidth = soFar.combinedWidth + element.width
+                        , svgs =
+                            soFar.svgs
+                                |> (::)
+                                    (svgStack
+                                        [ svgAttributeTranslate
+                                            { x = soFar.combinedWidth
+                                            , y = (fullHeight - element.height) / 2
+                                            }
+                                        ]
+                                        [ element.svg ]
+                                    )
+                        }
+                    )
+                    { combinedWidth = 0, svgs = [] }
+    in
+    { height = fullHeight
+    , width = combined.combinedWidth
+    , svg = combined.svgs |> svgStack []
+    }
+
+
+relationBackgroundColor : Color
+relationBackgroundColor =
+    Color.rgb 0.22 0.14 0
+
+
+svgPolygon :
+    List (Web.Dom.Modifier future)
+    -> List ( Float, Float )
+    -> SizedSvg future
+svgPolygon modifiers points =
+    let
+        xMinimum : Float
+        xMinimum =
+            points |> List.map (\( x, _ ) -> x) |> List.minimum |> Maybe.withDefault 0
+
+        xMaximum : Float
+        xMaximum =
+            points |> List.map (\( x, _ ) -> x) |> List.maximum |> Maybe.withDefault 0
+
+        yMinimum : Float
+        yMinimum =
+            points |> List.map (\( _, y ) -> y) |> List.minimum |> Maybe.withDefault 0
+
+        yMaximum : Float
+        yMaximum =
+            points |> List.map (\( _, y ) -> y) |> List.maximum |> Maybe.withDefault 0
+    in
+    { width = xMaximum - xMinimum
+    , height = yMaximum - yMinimum
+    , svg =
+        Web.Svg.element "polygon"
+            (Web.Dom.attribute "points"
+                (points
+                    |> List.map
+                        (\( x, y ) ->
+                            [ x |> String.fromFloat, ",", y |> String.fromFloat ] |> String.concat
+                        )
+                    |> String.join " "
+                )
+                :: modifiers
+            )
+            []
+    }
+
+
+factEqualsSvgWithInteractivity :
+    { shapeEventListenModifier : Web.Dom.Modifier future
+    , valueASvg : SizedSvg future
+    , valueBSvg : SizedSvg future
+    }
+    -> SizedSvg future
+factEqualsSvgWithInteractivity parts =
+    let
+        fullWidth : Float
+        fullWidth =
+            strokeWidth + contentSvg.width + strokeWidth
+
+        spaceWidth : Float
+        spaceWidth =
+            fontWidth / 2
+
+        equalsTextSvg : SizedSvg future_
+        equalsTextSvg =
+            unselectableTextSvg "="
+
+        contentSvg : SizedSvg future
+        contentSvg =
+            horizontalCenteredSvg
+                [ parts.valueASvg
+                , equalsTextSvg
+                    |> sizedSvgPad
+                        { left = spaceWidth
+                        , right = spaceWidth
+                        , top = 0
+                        , bottom = 0
+                        }
+                , parts.valueBSvg
+                ]
+
+        shapeSvg : SizedSvg future
+        shapeSvg =
+            svgPolygon
+                [ domModifierFillUniform relationBackgroundColor
+                , parts.shapeEventListenModifier
+                ]
+                [ ( 0, strokeWidth )
+                , ( strokeWidth, 0 )
+                , ( fullWidth, 0 )
+                , ( fullWidth, contentSvg.height )
+                , ( strokeWidth, contentSvg.height )
+                , ( 0, contentSvg.height - strokeWidth )
+                ]
+    in
+    { height = shapeSvg.height
+    , width = shapeSvg.width
+    , svg =
+        svgStack
+            []
+            [ shapeSvg.svg
+            , svgStack
+                [ svgAttributeTranslate
+                    { x = strokeWidth
+                    , y = 0
+                    }
+                ]
+                [ contentSvg.svg ]
+            ]
+    }
+
+
+equalsShapeSvg : { a : Maybe ValueUiState, b : Maybe ValueUiState } -> SizedSvg future_
+equalsShapeSvg toEquate =
+    factEqualsSvgWithInteractivity
+        { valueASvg = valueOrHoleShapeSvg relationBackgroundColor toEquate.a
+        , valueBSvg = valueOrHoleShapeSvg relationBackgroundColor toEquate.b
+        , shapeEventListenModifier = Web.Dom.modifierNone
+        }
+
+
+relationUseSvgWithInteractivity :
+    { shapeEventListenModifier : Web.Dom.Modifier future
+    , identifier : String
+    , argumentAsSvg : SizedSvg future
+    }
+    -> SizedSvg future
+relationUseSvgWithInteractivity parts =
+    let
+        spaceWidth : Float
+        spaceWidth =
+            fontWidth
+
+        identifierTextSvg : SizedSvg future_
+        identifierTextSvg =
+            unselectableTextSvg parts.identifier
+
+        contentSvg : SizedSvg future
+        contentSvg =
+            horizontalCenteredSvg
+                [ identifierTextSvg
+                    |> sizedSvgPad
+                        { top = strokeWidth / 2
+                        , bottom = strokeWidth / 2
+                        , left = 0
+                        , right = spaceWidth
+                        }
+                , parts.argumentAsSvg
+                ]
+
+        fullWidth : Float
+        fullWidth =
+            strokeWidth + contentSvg.width + strokeWidth
+
+        shapeSvg : SizedSvg future
+        shapeSvg =
+            svgPolygon
+                [ domModifierFillUniform relationBackgroundColor
+                , parts.shapeEventListenModifier
+                ]
+                [ ( 0, strokeWidth )
+                , ( strokeWidth, 0 )
+                , ( fullWidth, 0 )
+                , ( fullWidth, contentSvg.height )
+                , ( strokeWidth, contentSvg.height )
+                , ( 0, contentSvg.height - strokeWidth )
+                ]
+    in
+    { height = contentSvg.height
+    , width = fullWidth
+    , svg =
+        svgStack
+            []
+            [ shapeSvg.svg
+            , svgStack
+                [ svgAttributeTranslate
+                    { x = strokeWidth
+                    , y = 0
+                    }
+                ]
+                [ contentSvg.svg ]
+            ]
+    }
+
+
+relationUseShapeSvg : { identifier : String, argument : Maybe ValueUiState } -> SizedSvg future_
+relationUseShapeSvg relationUse =
+    relationUseSvgWithInteractivity
+        { shapeEventListenModifier = Web.Dom.modifierNone
+        , identifier = relationUse.identifier
+        , argumentAsSvg =
+            valueOrHoleShapeSvg relationBackgroundColor relationUse.argument
+        }
+
+
+sizedSvgFutureMap :
+    (future -> futureChanged)
+    -> (SizedSvg future -> SizedSvg futureChanged)
+sizedSvgFutureMap futureChange =
+    \sized ->
+        { width = sized.width
+        , height = sized.height
+        , svg =
+            sized.svg |> Web.Dom.futureMap futureChange
+        }
+
+
+factInsertHoleShapeSvg : Color -> SizedSvg future_
+factInsertHoleShapeSvg backgroundColor =
+    let
+        fullWidth : Float
+        fullWidth =
+            strokeWidth
+                + (strokeWidth * 5)
+                + strokeWidth
+
+        fullHeight : Float
+        fullHeight =
+            strokeWidth + strokeWidth
+    in
+    svgPolygon
+        [ domModifierFillUniform
+            (backgroundColor |> colorBrightnessScaleBy missingThingBrightnessScale)
+        ]
+        [ ( 0, strokeWidth )
+        , ( strokeWidth, 0 )
+        , ( fullWidth, 0 )
+        , ( fullWidth, fullHeight )
+        , ( strokeWidth, fullHeight )
+        , ( 0, fullHeight - strokeWidth )
+        ]
+
+
+factInsertHoleSvg : Color -> DragState -> SizedSvg FactUiState
+factInsertHoleSvg backgroundColor dragState =
+    let
+        shapeSvg : SizedSvg future_
+        shapeSvg =
+            factInsertHoleShapeSvg backgroundColor
+    in
+    { height = shapeSvg.height
+    , width = shapeSvg.width
+    , svg =
+        svgStack
+            [ case dragState of
+                Nothing ->
+                    Web.Dom.modifierNone
+
+                Just dragged ->
+                    case dragged.block of
+                        BlockValue _ ->
+                            Web.Dom.modifierNone
+
+                        BlockFact draggedFact ->
+                            Web.Dom.listenTo "pointerup"
+                                |> Web.Dom.modifierFutureMap
+                                    (\_ -> draggedFact)
+            ]
+            [ shapeSvg.svg ]
+    }
+
+
+factOrHoleSvg :
+    Color
+    -> DragState
+    -> Maybe FactUiState
+    -> SizedSvg { dragged : DragState, fact : Maybe FactUiState }
+factOrHoleSvg backgroundColor dragState fact =
+    case fact of
+        Nothing ->
+            factInsertHoleSvg backgroundColor dragState
+                |> sizedSvgFutureMap
+                    (\dropped ->
+                        { dragged = Nothing, fact = Just dropped }
+                    )
+
+        Just equivalentFact ->
+            factSvg dragState equivalentFact
+
+
+valueHoleSvg : Color -> DragState -> SizedSvg ValueUiState
+valueHoleSvg backgroundColor dragState =
+    let
+        shapeSvg : SizedSvg future_
+        shapeSvg =
+            valueHoleShapeSvg backgroundColor
+    in
+    { width = shapeSvg.width
+    , height = shapeSvg.height
+    , svg =
+        svgStack
+            [ case dragState of
+                Nothing ->
+                    Web.Dom.modifierNone
+
+                Just stateDragged ->
+                    case stateDragged.block of
+                        BlockFact _ ->
+                            Web.Dom.modifierNone
+
+                        BlockValue draggedValue ->
+                            Web.Dom.listenTo "pointerup"
+                                |> Web.Dom.modifierFutureMap (\_ -> draggedValue)
+            ]
+            [ shapeSvg.svg ]
+    }
+
+
+valueOrHoleSvg :
+    Color
+    -> DragState
+    -> Maybe ValueUiState
+    -> SizedSvg { dragged : DragState, value : Maybe ValueUiState }
+valueOrHoleSvg backgroundColor dragState maybeValue =
+    case maybeValue of
+        Nothing ->
+            valueHoleSvg backgroundColor dragState
+                |> sizedSvgFutureMap
+                    (\droppedValue ->
+                        { dragged = Nothing, value = Just droppedValue }
+                    )
+
+        Just value ->
+            valueSvg dragState value
+
+
+factAllBackgroundColor : Color
+factAllBackgroundColor =
+    Color.rgb 0.01 0.14 0
+
+
+factAnyBackgroundColor : Color
+factAnyBackgroundColor =
+    Color.rgb 0.15 0 0.1
+
+
+factNotBackgroundColor : Color
+factNotBackgroundColor =
+    Color.rgb 0.25 0.02 0
+
+
+factNotSvgWithInteractivity :
+    { shapeListenModifier : Web.Dom.Modifier future
+    , factInverseSvg : SizedSvg future
+    }
+    -> SizedSvg future
+factNotSvgWithInteractivity parts =
+    let
+        headerWidth : Float
+        headerWidth =
+            strokeWidth + notTextSvg.width + strokeWidth
+
+        fullWidth : Float
+        fullWidth =
+            headerWidth + parts.factInverseSvg.width
+
+        notTextSvg : SizedSvg future_
+        notTextSvg =
+            unselectableTextSvg "not"
+
+        fullHeight : Float
+        fullHeight =
+            Basics.max (fontSize + strokeWidth)
+                parts.factInverseSvg.height
+
+        shapeSvg : SizedSvg future
+        shapeSvg =
+            svgPolygon
+                [ domModifierFillUniform factNotBackgroundColor
+                , parts.shapeListenModifier
+                ]
+                [ ( 0, strokeWidth )
+                , ( strokeWidth, 0 )
+                , ( headerWidth + strokeWidth, 0 )
+                , ( headerWidth, strokeWidth )
+                , ( headerWidth, fullHeight - strokeWidth )
+                , ( headerWidth + strokeWidth, fullHeight )
+                , ( strokeWidth, fullHeight )
+                , ( 0, fullHeight - strokeWidth )
+                ]
+    in
+    { width = fullWidth
+    , height = fullHeight
+    , svg =
+        svgStack
+            []
+            [ shapeSvg.svg
+            , svgStack
+                [ svgAttributeTranslate
+                    { x = strokeWidth
+                    , y = strokeWidth / 2
+                    }
+                ]
+                [ notTextSvg.svg ]
+            , svgStack
+                [ svgAttributeTranslate { x = headerWidth, y = 0 } ]
+                [ parts.factInverseSvg.svg ]
+            ]
+    }
+
+
+valueLookupBackgroundColor : Color
+valueLookupBackgroundColor =
+    Color.rgb 0 0.06 0.19
+
+
+verticalSvg :
+    List (SizedSvg future)
+    -> SizedSvg future
+verticalSvg =
+    \elements ->
+        let
+            elementsAsSvgs :
+                { combinedHeight : Float
+                , widthMaximum : Float
+                , svgsReverse : List (Web.Dom.Node future)
+                }
+            elementsAsSvgs =
+                elements
+                    |> List.foldl
+                        (\asSvg soFar ->
+                            { combinedHeight = soFar.combinedHeight + asSvg.height
+                            , widthMaximum = Basics.max soFar.widthMaximum asSvg.width
+                            , svgsReverse =
+                                soFar.svgsReverse
+                                    |> (::)
+                                        (asSvg.svg
+                                            |> List.singleton
+                                            |> svgStack
+                                                [ svgAttributeTranslate
+                                                    { x = 0, y = soFar.combinedHeight }
+                                                ]
+                                        )
+                            }
+                        )
+                        { combinedHeight = 0
+                        , widthMaximum = 0
+                        , svgsReverse = []
+                        }
+        in
+        { height = elementsAsSvgs.combinedHeight
+        , width = elementsAsSvgs.widthMaximum
+        , svg =
+            elementsAsSvgs.svgsReverse
+                |> List.reverse
+                |> svgStack []
+        }
+
+
+valueLookupSvgWithInteractivity :
+    { listenToDragStart : Web.Dom.Modifier future }
+    -> FastDict.Dict String (SizedSvg future)
+    -> SizedSvg future
+valueLookupSvgWithInteractivity interactivity valueLookup =
+    let
+        radius : Float
+        radius =
+            strokeWidth
+    in
+    case valueLookup |> FastDict.toList of
+        [] ->
+            circleSvg { radius = radius }
+                [ interactivity.listenToDragStart
+                , domModifierFillUniform valueLookupBackgroundColor
+                , svgAttributeTranslate { x = radius, y = radius }
+                ]
+
+        entry0 :: entry1Up ->
+            let
+                entryListSvg : SizedSvg future
+                entryListSvg =
+                    (entry0 :: entry1Up)
+                        |> List.map
+                            (\( entryKey, entryValueSvg ) ->
+                                let
+                                    entryNameSvg : SizedSvg future_
+                                    entryNameSvg =
+                                        unselectableTextSvg entryKey
+                                in
+                                horizontalCenteredSvg
+                                    [ entryNameSvg
+                                        |> sizedSvgPad
+                                            { left = 0
+                                            , top = 0
+                                            , bottom = 0
+                                            , right = fontWidth
+                                            }
+                                    , entryValueSvg
+                                    ]
+                            )
+                        |> verticalSvg
+
+                shapeSvg : Web.Dom.Node future
+                shapeSvg =
+                    svgRoundedRect
+                        [ interactivity.listenToDragStart
+                        , domModifierFillUniform valueLookupBackgroundColor
+                        ]
+                        { radius = radius, width = fullWidth, height = fullHeight }
+                        |> .svg
+
+                fullHeight : Float
+                fullHeight =
+                    entryListSvg.height
+
+                fullWidth : Float
+                fullWidth =
+                    radius + entryListSvg.width
+            in
+            { width = fullWidth
+            , height = fullHeight
+            , svg =
+                svgStack
+                    []
+                    [ shapeSvg
+                    , entryListSvg.svg
+                        |> List.singleton
+                        |> svgStack
+                            [ svgAttributeTranslate { x = radius, y = 0 }
+                            ]
+                    ]
+            }
+
+
+circleSvg : { radius : Float } -> List (Web.Dom.Modifier future) -> SizedSvg future
+circleSvg geometry modifiers =
+    { width = geometry.radius * 2
+    , height = geometry.radius * 2
+    , svg =
+        Web.Svg.element "circle"
+            (Web.Dom.attribute "r" (geometry.radius |> String.fromFloat)
+                :: modifiers
+            )
+            []
+    }
+
+
+domListenToPointerDown : Web.Dom.Modifier (Result Json.Decode.Error { x : Float, y : Float })
+domListenToPointerDown =
+    Web.Dom.listenTo "pointerdown"
+        |> Web.Dom.modifierFutureMap
+            (\pointerDownEventJson ->
+                case
+                    pointerDownEventJson
+                        |> Json.Decode.decodeValue
+                            (Json.Decode.map2
+                                (\x y -> { x = x, y = y })
+                                (Json.Decode.field "clientX" Json.Decode.float)
+                                (Json.Decode.field "clientY" Json.Decode.float)
+                            )
+                of
+                    Err jsonDecodeError ->
+                        Err jsonDecodeError
+
+                    Ok pointer ->
+                        { x = pointer.x
+                        , y = pointer.y
+                        }
+                            |> Ok
+            )
+
+
+variableShapeSvg : String -> SizedSvg future_
+variableShapeSvg =
+    \variableName ->
+        let
+            radius : Float
+            radius =
+                strokeWidth
+
+            nameSvg : SizedSvg future_
+            nameSvg =
+                unselectableTextSvg variableName
+
+            fullWidth : Float
+            fullWidth =
+                nameSvg.width + radius * 2
+
+            fullHeight : Float
+            fullHeight =
+                nameSvg.height + radius
+
+            backgroundSvg : Web.Dom.Node future_
+            backgroundSvg =
+                svgRoundedRect
+                    [ domModifierFillUniform variableBackgroundColor
+                    ]
+                    { radius = radius, width = fullWidth, height = fullHeight }
+                    |> .svg
+        in
+        { width = fullWidth
+        , height = fullHeight
+        , svg =
+            svgStack
+                []
+                [ backgroundSvg
+                , svgStack
+                    [ svgAttributeTranslate
+                        { x = radius
+                        , y = radius / 2
+                        }
+                    ]
+                    [ nameSvg.svg ]
+                ]
+        }
+
+
+variableBackgroundColor : Color
+variableBackgroundColor =
+    Color.rgb 0 0.21 0.18
+
+
+valueSvg :
+    DragState
+    -> ValueUiState
+    -> SizedSvg { dragged : DragState, value : Maybe ValueUiState }
+valueSvg dragState =
+    \value ->
+        case value of
+            Variable variableName ->
+                variableShapeSvg variableName
+                    |> List.singleton
+                    |> sizedSvgStack
+                        [ domListenToPointerDown
+                            |> Web.Dom.modifierFutureMap
+                                (\pointerDownEventPosition ->
+                                    case pointerDownEventPosition of
+                                        Err _ ->
+                                            { dragged = dragState
+                                            , value = Just (Variable variableName)
+                                            }
+
+                                        Ok pointer ->
+                                            { dragged =
+                                                Just
+                                                    { x = pointer.x
+                                                    , y = pointer.y
+                                                    , offsetX = -strokeWidth
+                                                    , offsetY = -strokeWidth
+                                                    , block = BlockValue (Variable variableName)
+                                                    }
+                                            , value = Nothing
+                                            }
+                                )
+                        ]
+
+            ValueLookup valueLookup ->
+                valueLookupSvgWithInteractivity
+                    { listenToDragStart =
+                        domListenToPointerDown
+                            |> Web.Dom.modifierFutureMap
+                                (\pointerDownEventPosition ->
+                                    case pointerDownEventPosition of
+                                        Err _ ->
+                                            { dragged = dragState
+                                            , value = Just (ValueLookup valueLookup)
+                                            }
+
+                                        Ok pointer ->
+                                            { dragged =
+                                                Just
+                                                    { x = pointer.x
+                                                    , y = pointer.y
+                                                    , offsetX = -strokeWidth
+                                                    , offsetY = -strokeWidth
+                                                    , block = BlockValue (ValueLookup valueLookup)
+                                                    }
+                                            , value = Nothing
+                                            }
+                                )
+                    }
+                    (valueLookup
+                        |> FastDict.map
+                            (\entryKey entryValue ->
+                                valueOrHoleSvg valueLookupBackgroundColor dragState entryValue
+                                    |> sizedSvgFutureMap
+                                        (\entryValueFuture ->
+                                            { dragged = entryValueFuture.dragged
+                                            , value =
+                                                ValueLookup
+                                                    (valueLookup
+                                                        |> FastDict.update entryKey
+                                                            (\_ -> entryValueFuture.value |> Just)
+                                                    )
+                                                    |> Just
+                                            }
+                                        )
+                            )
+                    )
+
+
+sizedSvgStack :
+    List (Web.Dom.Modifier future)
+    -> List (SizedSvg future)
+    -> SizedSvg future
+sizedSvgStack modifiers elements =
+    { width =
+        elements |> List.map .width |> List.maximum |> Maybe.withDefault 0
+    , height =
+        elements |> List.map .height |> List.maximum |> Maybe.withDefault 0
+    , svg =
+        elements |> List.map .svg |> svgStack modifiers
+    }
+
+
+factSvg :
+    DragState
+    -> FactUiState
+    -> SizedSvg { dragged : DragState, fact : Maybe FactUiState }
+factSvg dragState fact =
+    case fact of
+        All parts ->
+            blockVerticalFactListSvg
+                { name = "all"
+                , fact = All parts
+                , dragState = dragState
+                , elements = parts
+                , color = factAllBackgroundColor
+                }
+                |> sizedSvgFutureMap
+                    (\future ->
+                        { dragged = future.dragged
+                        , fact = Maybe.map All future.elements
+                        }
+                    )
+
+        Any branches ->
+            blockVerticalFactListSvg
+                { name = "any"
+                , fact = Any branches
+                , dragState = dragState
+                , elements = branches
+                , color = factAnyBackgroundColor
+                }
+                |> sizedSvgFutureMap
+                    (\future ->
+                        { dragged = future.dragged
+                        , fact = Maybe.map Any future.elements
+                        }
+                    )
+
+        Not maybeFactInverse ->
+            factNotSvgWithInteractivity
+                { factInverseSvg =
+                    factOrHoleSvg factNotBackgroundColor dragState maybeFactInverse
+                        |> sizedSvgFutureMap
+                            (\futureFactInverse ->
+                                { fact = Just (Not futureFactInverse.fact)
+                                , dragged = futureFactInverse.dragged
+                                }
+                            )
+                , shapeListenModifier =
+                    domListenToPointerDown
+                        |> Web.Dom.modifierFutureMap
+                            (\pointerDownEventPosition ->
+                                case pointerDownEventPosition of
+                                    Err _ ->
+                                        { dragged = dragState, fact = Just (Not maybeFactInverse) }
+
+                                    Ok pointer ->
+                                        { dragged =
+                                            Just
+                                                { x = pointer.x
+                                                , y = pointer.y
+                                                , offsetX = -strokeWidth
+                                                , offsetY = -strokeWidth
+                                                , block = BlockFact (Not maybeFactInverse)
+                                                }
+                                        , fact = Nothing
+                                        }
+                            )
+                }
+
+        Equal toEquate ->
+            factEqualsSvgWithInteractivity
+                { valueASvg =
+                    valueOrHoleSvg relationBackgroundColor dragState toEquate.a
+                        |> sizedSvgFutureMap
+                            (\futureA ->
+                                { dragged = futureA.dragged
+                                , fact = Just (Equal { a = futureA.value, b = toEquate.b })
+                                }
+                            )
+                , valueBSvg =
+                    valueOrHoleSvg relationBackgroundColor dragState toEquate.b
+                        |> sizedSvgFutureMap
+                            (\futureB ->
+                                { dragged = futureB.dragged
+                                , fact = Just (Equal { a = toEquate.a, b = futureB.value })
+                                }
+                            )
+                , shapeEventListenModifier =
+                    domListenToPointerDown
+                        |> Web.Dom.modifierFutureMap
+                            (\pointerDownEventPosition ->
+                                case pointerDownEventPosition of
+                                    Err _ ->
+                                        { dragged = dragState, fact = Just (Equal toEquate) }
+
+                                    Ok pointer ->
+                                        { dragged =
+                                            Just
+                                                { x = pointer.x
+                                                , y = pointer.y
+                                                , offsetX = -strokeWidth
+                                                , offsetY = -strokeWidth
+                                                , block = BlockFact (Equal toEquate)
+                                                }
+                                        , fact = Nothing
+                                        }
+                            )
+                }
+
+        RelationUse relationUse ->
+            relationUseSvgWithInteractivity
+                { shapeEventListenModifier =
+                    domListenToPointerDown
+                        |> Web.Dom.modifierFutureMap
+                            (\pointerDownEventPosition ->
+                                case pointerDownEventPosition of
+                                    Err _ ->
+                                        { dragged = dragState
+                                        , fact = Just (RelationUse relationUse)
+                                        }
+
+                                    Ok pointer ->
+                                        { dragged =
+                                            Just
+                                                { x = pointer.x
+                                                , y = pointer.y
+                                                , offsetX = -strokeWidth
+                                                , offsetY = -strokeWidth
+                                                , block = BlockFact (RelationUse relationUse)
+                                                }
+                                        , fact = Nothing
+                                        }
+                            )
+                , identifier = relationUse.identifier
+                , argumentAsSvg =
+                    case relationUse.argument of
+                        Nothing ->
+                            valueHoleSvg relationBackgroundColor dragState
+                                |> sizedSvgFutureMap
+                                    (\futureArgumentUiState ->
+                                        { dragged = Nothing
+                                        , fact =
+                                            Just
+                                                (RelationUse
+                                                    { identifier = relationUse.identifier
+                                                    , argument = Just futureArgumentUiState
+                                                    }
+                                                )
+                                        }
+                                    )
+
+                        Just argumentValue ->
+                            valueSvg dragState argumentValue
+                                |> sizedSvgFutureMap
+                                    (\futureArgumentUiState ->
+                                        { dragged = futureArgumentUiState.dragged
+                                        , fact =
+                                            Just
+                                                (RelationUse
+                                                    { identifier = relationUse.identifier
+                                                    , argument = futureArgumentUiState.value
+                                                    }
+                                                )
+                                        }
+                                    )
+                }
+
+
+valueShapeSvg : ValueUiState -> SizedSvg future_
+valueShapeSvg value =
+    case value of
+        Variable variableName ->
+            variableShapeSvg variableName
+
+        ValueLookup valueLookup ->
+            valueLookupShapeSvg valueLookup
 
 
 interface : State -> Web.Interface State
@@ -392,19 +1601,11 @@ interface state =
         |> Web.interfaceBatch
 
 
-svgStack :
-    List (Web.Dom.Modifier future)
-    -> List (Web.Dom.Node future)
-    -> Web.Dom.Node future
-svgStack modifiers subs =
-    Web.Svg.element "g" modifiers subs
-
-
 domSvgContainer :
     { left : Int, top : Int, right : Int, bottom : Int }
-    -> List (Web.Dom.Modifier future_)
-    -> List (Web.Dom.Node future_)
-    -> Web.Dom.Node future_
+    -> List (Web.Dom.Modifier future)
+    -> List (Web.Dom.Node future)
+    -> Web.Dom.Node future
 domSvgContainer size modifiers subs =
     Web.Svg.element "svg"
         (Web.Dom.attribute "viewBox"
@@ -421,181 +1622,6 @@ domSvgContainer size modifiers subs =
             :: modifiers
         )
         subs
-
-
-svgAttributeTranslate : { x : Float, y : Float } -> Web.Dom.Modifier future_
-svgAttributeTranslate offset =
-    Web.Dom.attribute "transform"
-        ("translate("
-            ++ (offset.x |> String.fromFloat)
-            ++ " "
-            ++ (offset.y |> String.fromFloat)
-            ++ ")"
-        )
-
-
-type alias SizedSvg future =
-    { height : Float, width : Float, svg : Web.Dom.Node future }
-
-
-sizedSvgStack :
-    List (Web.Dom.Modifier future)
-    -> List (SizedSvg future)
-    -> SizedSvg future
-sizedSvgStack modifiers elements =
-    { width =
-        elements |> List.map .width |> List.maximum |> Maybe.withDefault 0
-    , height =
-        elements |> List.map .height |> List.maximum |> Maybe.withDefault 0
-    , svg =
-        elements |> List.map .svg |> svgStack modifiers
-    }
-
-
-unselectableTextSvg : String -> SizedSvg future_
-unselectableTextSvg string =
-    { height = fontSize
-    , width = (string |> String.length |> Basics.toFloat) * fontWidth
-    , svg =
-        Web.Svg.element "text"
-            [ Web.Dom.style "user-select" "none"
-            , Web.Dom.style "pointer-events" "none"
-            , Web.Dom.attribute "x" (0 |> String.fromFloat)
-            , Web.Dom.attribute "y" (0.77 * fontSize |> String.fromFloat)
-            , domModifierFillUniform (Color.rgb 1 1 1)
-            ]
-            [ Web.Dom.text string ]
-    }
-
-
-sizedSvgPad :
-    { left : Float, right : Float, top : Float, bottom : Float }
-    -> (SizedSvg future -> SizedSvg future)
-sizedSvgPad additionalPadding =
-    \sizedSvg ->
-        { width = sizedSvg.width + additionalPadding.left + additionalPadding.right
-        , height = sizedSvg.height + additionalPadding.bottom + additionalPadding.top
-        , svg =
-            svgStack
-                [ svgAttributeTranslate
-                    { x = additionalPadding.left
-                    , y = additionalPadding.top
-                    }
-                ]
-                [ sizedSvg.svg ]
-        }
-
-
-horizontalCenteredSvg : List (SizedSvg future) -> SizedSvg future
-horizontalCenteredSvg elements =
-    let
-        fullHeight : Float
-        fullHeight =
-            elements |> List.map .height |> List.maximum |> Maybe.withDefault 0
-
-        combined : { combinedWidth : Float, svgs : List (Web.Dom.Node future) }
-        combined =
-            elements
-                |> List.foldl
-                    (\element soFar ->
-                        { combinedWidth = soFar.combinedWidth + element.width
-                        , svgs =
-                            soFar.svgs
-                                |> (::)
-                                    (svgStack
-                                        [ svgAttributeTranslate
-                                            { x = soFar.combinedWidth
-                                            , y = (fullHeight - element.height) / 2
-                                            }
-                                        ]
-                                        [ element.svg ]
-                                    )
-                        }
-                    )
-                    { combinedWidth = 0, svgs = [] }
-    in
-    { height = fullHeight
-    , width = combined.combinedWidth
-    , svg = combined.svgs |> svgStack []
-    }
-
-
-horizontalSvg : List (SizedSvg future) -> SizedSvg future
-horizontalSvg =
-    \subs ->
-        let
-            subsAsSvgs :
-                { heightMaximum : Float
-                , combinedWidth : Float
-                , svgsReverse : List (Web.Dom.Node future)
-                }
-            subsAsSvgs =
-                subs
-                    |> List.foldl
-                        (\asSvg soFar ->
-                            { heightMaximum = Basics.max soFar.heightMaximum asSvg.height
-                            , combinedWidth = soFar.combinedWidth + asSvg.width
-                            , svgsReverse =
-                                soFar.svgsReverse
-                                    |> (::)
-                                        (asSvg.svg
-                                            |> List.singleton
-                                            |> svgStack
-                                                [ svgAttributeTranslate { x = soFar.combinedWidth, y = 0 }
-                                                ]
-                                        )
-                            }
-                        )
-                        { heightMaximum = 0
-                        , combinedWidth = 0
-                        , svgsReverse = []
-                        }
-        in
-        { height = subsAsSvgs.heightMaximum
-        , width = subsAsSvgs.combinedWidth
-        , svg =
-            subsAsSvgs.svgsReverse
-                |> List.reverse
-                |> svgStack []
-        }
-
-
-factOrHoleShapeSvg : Color -> Maybe FactUiState -> SizedSvg future_
-factOrHoleShapeSvg backgroundColor fact =
-    case fact of
-        Nothing ->
-            factInsertHoleShapeSvg backgroundColor
-
-        Just equivalentFact ->
-            factShapeSvg equivalentFact
-
-
-factOrHoleSvg :
-    Color
-    -> DragState
-    -> Maybe FactUiState
-    -> SizedSvg { dragged : DragState, fact : Maybe FactUiState }
-factOrHoleSvg backgroundColor dragState fact =
-    case fact of
-        Nothing ->
-            factInsertHoleSvg backgroundColor dragState
-                |> sizedSvgFutureMap
-                    (\dropped ->
-                        { dragged = Nothing, fact = Just dropped }
-                    )
-
-        Just equivalentFact ->
-            factSvg dragState equivalentFact
-
-
-relationBackgroundColor : Color
-relationBackgroundColor =
-    Color.rgb 0.22 0.14 0
-
-
-strokeWidth : Float
-strokeWidth =
-    fontSize
 
 
 relationDefinitionSvg :
@@ -615,6 +1641,22 @@ relationDefinitionSvg :
             }
 relationDefinitionSvg dragState definition =
     let
+        spaceWidth : Float
+        spaceWidth =
+            fontWidth
+
+        parameterSvg : SizedSvg { dragged : DragState, value : Maybe ValueUiState }
+        parameterSvg =
+            valueOrHoleSvg relationBackgroundColor dragState definition.parameter
+
+        nameSvg : SizedSvg future_
+        nameSvg =
+            unselectableTextSvg definition.name
+
+        equalsTextSvg : SizedSvg future_
+        equalsTextSvg =
+            unselectableTextSvg "="
+
         headerWidth : Float
         headerWidth =
             strokeWidth
@@ -629,25 +1671,9 @@ relationDefinitionSvg dragState definition =
         fullWidth =
             headerWidth + equivalentFactSvg.width
 
-        spaceWidth : Float
-        spaceWidth =
-            fontWidth
-
-        parameterSvg : SizedSvg { dragged : DragState, value : Maybe ValueUiState }
-        parameterSvg =
-            valueOrHoleSvg relationBackgroundColor dragState definition.parameter
-
         equivalentFactSvg : SizedSvg { dragged : DragState, fact : Maybe FactUiState }
         equivalentFactSvg =
             factOrHoleSvg relationBackgroundColor dragState definition.equivalentFact
-
-        nameSvg : SizedSvg future_
-        nameSvg =
-            unselectableTextSvg definition.name
-
-        equalsTextSvg : SizedSvg future_
-        equalsTextSvg =
-            unselectableTextSvg "="
 
         headerContent :
             SizedSvg
@@ -738,6 +1764,20 @@ relationDefinitionSvg dragState definition =
     }
 
 
+type alias SizedSvg future =
+    { height : Float, width : Float, svg : Web.Dom.Node future }
+
+
+factOrHoleShapeSvg : Color -> Maybe FactUiState -> SizedSvg future_
+factOrHoleShapeSvg backgroundColor fact =
+    case fact of
+        Nothing ->
+            factInsertHoleShapeSvg backgroundColor
+
+        Just equivalentFact ->
+            factShapeSvg equivalentFact
+
+
 factNotShapeSvg : Maybe FactUiState -> SizedSvg future_
 factNotShapeSvg maybeFactInverse =
     factNotSvgWithInteractivity
@@ -747,70 +1787,13 @@ factNotShapeSvg maybeFactInverse =
         }
 
 
-equalsShapeSvg : { a : Maybe ValueUiState, b : Maybe ValueUiState } -> SizedSvg future_
-equalsShapeSvg toEquate =
-    factEqualsSvgWithInteractivity
-        { valueASvg = valueOrHoleShapeSvg relationBackgroundColor toEquate.a
-        , valueBSvg = valueOrHoleShapeSvg relationBackgroundColor toEquate.b
-        , shapeEventListenModifier = Web.Dom.modifierNone
+factAllShapeSvg : List FactUiState -> SizedSvg future_
+factAllShapeSvg parts =
+    blockVerticalFactListShapeSvg
+        { name = "all"
+        , color = factAllBackgroundColor
+        , elements = parts
         }
-
-
-relationUseShapeSvg : { identifier : String, argument : Maybe ValueUiState } -> SizedSvg future_
-relationUseShapeSvg relationUse =
-    relationUseSvgWithInteractivity
-        { shapeEventListenModifier = Web.Dom.modifierNone
-        , identifier = relationUse.identifier
-        , argumentAsSvg =
-            valueOrHoleShapeSvg relationBackgroundColor relationUse.argument
-        }
-
-
-factShapeSvg : FactUiState -> SizedSvg future_
-factShapeSvg fact =
-    case fact of
-        All parts ->
-            factAllShapeSvg parts
-
-        Any branches ->
-            factAnyShapeSvg branches
-
-        Not maybeFactInverse ->
-            factNotShapeSvg maybeFactInverse
-
-        Equal toEquate ->
-            equalsShapeSvg toEquate
-
-        RelationUse relationUse ->
-            relationUseShapeSvg relationUse
-
-
-valueOrHoleSvg :
-    Color
-    -> DragState
-    -> Maybe ValueUiState
-    -> SizedSvg { dragged : DragState, value : Maybe ValueUiState }
-valueOrHoleSvg backgroundColor dragState maybeValue =
-    case maybeValue of
-        Nothing ->
-            valueHoleSvg backgroundColor dragState
-                |> sizedSvgFutureMap
-                    (\droppedValue ->
-                        { dragged = Nothing, value = Just droppedValue }
-                    )
-
-        Just value ->
-            valueSvg dragState value
-
-
-valueOrHoleShapeSvg : Color -> Maybe ValueUiState -> SizedSvg future_
-valueOrHoleShapeSvg backgroundColor maybeValue =
-    case maybeValue of
-        Just value ->
-            valueShapeSvg value
-
-        Nothing ->
-            valueHoleShapeSvg backgroundColor
 
 
 verticalFactListPolygonPoints :
@@ -845,187 +1828,6 @@ verticalFactListPolygonPoints sizes =
     , ( sizes.sideWidth + strokeWidth, sizes.headerHeight + sizes.elementsHeight )
     , ( sizes.sideWidth + strokeWidth, sizes.headerHeight )
     ]
-
-
-factSvg :
-    DragState
-    -> FactUiState
-    -> SizedSvg { dragged : DragState, fact : Maybe FactUiState }
-factSvg dragState fact =
-    case fact of
-        All parts ->
-            blockVerticalFactListSvg
-                { name = "all"
-                , fact = All parts
-                , dragState = dragState
-                , elements = parts
-                , color = factAllBackgroundColor
-                }
-                |> sizedSvgFutureMap
-                    (\future ->
-                        { dragged = future.dragged
-                        , fact = Maybe.map All future.elements
-                        }
-                    )
-
-        Any branches ->
-            blockVerticalFactListSvg
-                { name = "any"
-                , fact = Any branches
-                , dragState = dragState
-                , elements = branches
-                , color = factAnyBackgroundColor
-                }
-                |> sizedSvgFutureMap
-                    (\future ->
-                        { dragged = future.dragged
-                        , fact = Maybe.map Any future.elements
-                        }
-                    )
-
-        Not maybeFactInverse ->
-            factNotSvgWithInteractivity
-                { factInverseSvg =
-                    factOrHoleSvg factNotBackgroundColor dragState maybeFactInverse
-                        |> sizedSvgFutureMap
-                            (\futureFactInverse ->
-                                { fact = Just (Not futureFactInverse.fact)
-                                , dragged = futureFactInverse.dragged
-                                }
-                            )
-                , shapeListenModifier =
-                    domListenToPointerDown
-                        |> Web.Dom.modifierFutureMap
-                            (\pointerDownEventPosition ->
-                                case pointerDownEventPosition of
-                                    Err _ ->
-                                        { dragged = dragState, fact = Just (Not maybeFactInverse) }
-
-                                    Ok pointer ->
-                                        { dragged =
-                                            Just
-                                                { x = pointer.x
-                                                , y = pointer.y
-                                                , offsetX = -strokeWidth
-                                                , offsetY = -strokeWidth
-                                                , block = BlockFact (Not maybeFactInverse)
-                                                }
-                                        , fact = Nothing
-                                        }
-                            )
-                }
-
-        Equal toEquate ->
-            factEqualsSvgWithInteractivity
-                { valueASvg =
-                    valueOrHoleSvg relationBackgroundColor dragState toEquate.a
-                        |> sizedSvgFutureMap
-                            (\futureA ->
-                                { dragged = futureA.dragged
-                                , fact = Just (Equal { a = futureA.value, b = toEquate.b })
-                                }
-                            )
-                , valueBSvg =
-                    valueOrHoleSvg relationBackgroundColor dragState toEquate.b
-                        |> sizedSvgFutureMap
-                            (\futureB ->
-                                { dragged = futureB.dragged
-                                , fact = Just (Equal { a = toEquate.a, b = futureB.value })
-                                }
-                            )
-                , shapeEventListenModifier =
-                    domListenToPointerDown
-                        |> Web.Dom.modifierFutureMap
-                            (\pointerDownEventPosition ->
-                                case pointerDownEventPosition of
-                                    Err _ ->
-                                        { dragged = dragState, fact = Just (Equal toEquate) }
-
-                                    Ok pointer ->
-                                        { dragged =
-                                            Just
-                                                { x = pointer.x
-                                                , y = pointer.y
-                                                , offsetX = -strokeWidth
-                                                , offsetY = -strokeWidth
-                                                , block = BlockFact (Equal toEquate)
-                                                }
-                                        , fact = Nothing
-                                        }
-                            )
-                }
-
-        RelationUse relationUse ->
-            relationUseSvgWithInteractivity
-                { shapeEventListenModifier =
-                    domListenToPointerDown
-                        |> Web.Dom.modifierFutureMap
-                            (\pointerDownEventPosition ->
-                                case pointerDownEventPosition of
-                                    Err _ ->
-                                        { dragged = dragState
-                                        , fact = Just (RelationUse relationUse)
-                                        }
-
-                                    Ok pointer ->
-                                        { dragged =
-                                            Just
-                                                { x = pointer.x
-                                                , y = pointer.y
-                                                , offsetX = -strokeWidth
-                                                , offsetY = -strokeWidth
-                                                , block = BlockFact (RelationUse relationUse)
-                                                }
-                                        , fact = Nothing
-                                        }
-                            )
-                , identifier = relationUse.identifier
-                , argumentAsSvg =
-                    case relationUse.argument of
-                        Nothing ->
-                            valueHoleSvg relationBackgroundColor dragState
-                                |> sizedSvgFutureMap
-                                    (\futureArgumentUiState ->
-                                        { dragged = Nothing
-                                        , fact =
-                                            Just
-                                                (RelationUse
-                                                    { identifier = relationUse.identifier
-                                                    , argument = Just futureArgumentUiState
-                                                    }
-                                                )
-                                        }
-                                    )
-
-                        Just argumentValue ->
-                            valueSvg dragState argumentValue
-                                |> sizedSvgFutureMap
-                                    (\futureArgumentUiState ->
-                                        { dragged = futureArgumentUiState.dragged
-                                        , fact =
-                                            Just
-                                                (RelationUse
-                                                    { identifier = relationUse.identifier
-                                                    , argument = futureArgumentUiState.value
-                                                    }
-                                                )
-                                        }
-                                    )
-                }
-
-
-factAllShapeSvg : List FactUiState -> SizedSvg future_
-factAllShapeSvg parts =
-    blockVerticalFactListShapeSvg
-        { name = "all"
-        , color = factAllBackgroundColor
-        , elements = parts
-        }
-
-
-factAllBackgroundColor : Color
-factAllBackgroundColor =
-    Color.rgb 0.01 0.14 0
 
 
 blockVerticalFactListSvg :
@@ -1181,18 +1983,6 @@ blockVerticalFactListSvg config =
     }
 
 
-sizedSvgFutureMap :
-    (future -> futureChanged)
-    -> (SizedSvg future -> SizedSvg futureChanged)
-sizedSvgFutureMap futureChange =
-    \sized ->
-        { width = sized.width
-        , height = sized.height
-        , svg =
-            sized.svg |> Web.Dom.futureMap futureChange
-        }
-
-
 factAnyShapeSvg : List FactUiState -> SizedSvg future_
 factAnyShapeSvg branches =
     blockVerticalFactListShapeSvg
@@ -1200,11 +1990,6 @@ factAnyShapeSvg branches =
         , color = factAnyBackgroundColor
         , elements = branches
         }
-
-
-factAnyBackgroundColor : Color
-factAnyBackgroundColor =
-    Color.rgb 0.15 0 0.1
 
 
 blockVerticalFactListShapeSvg :
@@ -1274,843 +2059,16 @@ blockVerticalFactListShapeSvg config =
     }
 
 
-factNotBackgroundColor : Color
-factNotBackgroundColor =
-    Color.rgb 0.25 0.02 0
-
-
-factNotSvgWithInteractivity :
-    { shapeListenModifier : Web.Dom.Modifier future
-    , factInverseSvg : SizedSvg future
-    }
-    -> SizedSvg future
-factNotSvgWithInteractivity parts =
-    let
-        sideWidth : Float
-        sideWidth =
-            strokeWidth
-
-        headerWidth : Float
-        headerWidth =
-            strokeWidth + notTextSvg.width + strokeWidth
-
-        fullWidth : Float
-        fullWidth =
-            headerWidth + parts.factInverseSvg.width
-
-        notTextSvg : SizedSvg future_
-        notTextSvg =
-            unselectableTextSvg "not"
-
-        fullHeight : Float
-        fullHeight =
-            Basics.max (fontSize + strokeWidth)
-                parts.factInverseSvg.height
-
-        shapeSvg : SizedSvg future
-        shapeSvg =
-            svgPolygon
-                [ domModifierFillUniform factNotBackgroundColor
-                , parts.shapeListenModifier
-                ]
-                [ ( 0, strokeWidth )
-                , ( strokeWidth, 0 )
-                , ( headerWidth + strokeWidth, 0 )
-                , ( headerWidth, strokeWidth )
-                , ( headerWidth, fullHeight - strokeWidth )
-                , ( headerWidth + strokeWidth, fullHeight )
-                , ( strokeWidth, fullHeight )
-                , ( 0, fullHeight - strokeWidth )
-                ]
-    in
-    { width = fullWidth
-    , height = fullHeight
-    , svg =
-        svgStack
-            []
-            [ shapeSvg.svg
-            , svgStack
-                [ svgAttributeTranslate
-                    { x = strokeWidth
-                    , y = strokeWidth / 2
-                    }
-                ]
-                [ notTextSvg.svg ]
-            , svgStack
-                [ svgAttributeTranslate { x = headerWidth, y = 0 } ]
-                [ parts.factInverseSvg.svg ]
-            ]
-    }
-
-
-factInsertHoleSvg : Color -> DragState -> SizedSvg FactUiState
-factInsertHoleSvg backgroundColor dragState =
-    let
-        shapeSvg : SizedSvg future_
-        shapeSvg =
-            factInsertHoleShapeSvg backgroundColor
-    in
-    { height = shapeSvg.height
-    , width = shapeSvg.width
-    , svg =
-        svgStack
-            [ case dragState of
-                Nothing ->
-                    Web.Dom.modifierNone
-
-                Just dragged ->
-                    case dragged.block of
-                        BlockValue _ ->
-                            Web.Dom.modifierNone
-
-                        BlockFact draggedFact ->
-                            Web.Dom.listenTo "pointerup"
-                                |> Web.Dom.modifierFutureMap
-                                    (\_ -> draggedFact)
-            ]
-            [ shapeSvg.svg ]
-    }
-
-
-factInsertHoleShapeSvg : Color -> SizedSvg future_
-factInsertHoleShapeSvg backgroundColor =
-    let
-        fullWidth : Float
-        fullWidth =
-            strokeWidth
-                + (strokeWidth * 5)
-                + strokeWidth
-
-        fullHeight : Float
-        fullHeight =
-            strokeWidth + strokeWidth
-    in
-    svgPolygon
-        [ domModifierFillUniform
-            (backgroundColor |> colorBrightnessScaleBy missingThingBrightnessScale)
-        ]
-        [ ( 0, strokeWidth )
-        , ( strokeWidth, 0 )
-        , ( fullWidth, 0 )
-        , ( fullWidth, fullHeight )
-        , ( strokeWidth, fullHeight )
-        , ( 0, fullHeight - strokeWidth )
-        ]
-
-
-factEqualsSvgWithInteractivity :
-    { shapeEventListenModifier : Web.Dom.Modifier future
-    , valueASvg : SizedSvg future
-    , valueBSvg : SizedSvg future
-    }
-    -> SizedSvg future
-factEqualsSvgWithInteractivity parts =
-    let
-        fullWidth : Float
-        fullWidth =
-            strokeWidth + contentSvg.width + strokeWidth
-
-        spaceWidth : Float
-        spaceWidth =
-            fontWidth / 2
-
-        equalsTextSvg : SizedSvg future_
-        equalsTextSvg =
-            unselectableTextSvg "="
-
-        contentSvg : SizedSvg future
-        contentSvg =
-            horizontalCenteredSvg
-                [ parts.valueASvg
-                , equalsTextSvg
-                    |> sizedSvgPad
-                        { left = spaceWidth
-                        , right = spaceWidth
-                        , top = 0
-                        , bottom = 0
-                        }
-                , parts.valueBSvg
-                ]
-
-        shapeSvg : SizedSvg future
-        shapeSvg =
-            svgPolygon
-                [ domModifierFillUniform relationBackgroundColor
-                , parts.shapeEventListenModifier
-                ]
-                [ ( 0, strokeWidth )
-                , ( strokeWidth, 0 )
-                , ( fullWidth, 0 )
-                , ( fullWidth, contentSvg.height )
-                , ( strokeWidth, contentSvg.height )
-                , ( 0, contentSvg.height - strokeWidth )
-                ]
-    in
-    { height = shapeSvg.height
-    , width = shapeSvg.width
-    , svg =
-        svgStack
-            []
-            [ shapeSvg.svg
-            , svgStack
-                [ svgAttributeTranslate
-                    { x = strokeWidth
-                    , y = 0
-                    }
-                ]
-                [ contentSvg.svg ]
-            ]
-    }
-
-
-svgPolygon :
-    List (Web.Dom.Modifier future_)
-    -> List ( Float, Float )
-    -> SizedSvg future_
-svgPolygon modifiers points =
-    let
-        xMinimum : Float
-        xMinimum =
-            points |> List.map (\( x, _ ) -> x) |> List.minimum |> Maybe.withDefault 0
-
-        xMaximum : Float
-        xMaximum =
-            points |> List.map (\( x, _ ) -> x) |> List.maximum |> Maybe.withDefault 0
-
-        yMinimum : Float
-        yMinimum =
-            points |> List.map (\( _, y ) -> y) |> List.minimum |> Maybe.withDefault 0
-
-        yMaximum : Float
-        yMaximum =
-            points |> List.map (\( _, y ) -> y) |> List.maximum |> Maybe.withDefault 0
-    in
-    { width = xMaximum - xMinimum
-    , height = yMaximum - yMinimum
-    , svg =
-        Web.Svg.element "polygon"
-            (Web.Dom.attribute "points"
-                (points
-                    |> List.map
-                        (\( x, y ) ->
-                            (x |> String.fromFloat) ++ "," ++ (y |> String.fromFloat)
-                        )
-                    |> String.join " "
-                )
-                :: modifiers
-            )
-            []
-    }
-
-
-relationUseSvgWithInteractivity :
-    { shapeEventListenModifier : Web.Dom.Modifier future
-    , identifier : String
-    , argumentAsSvg : SizedSvg future
-    }
-    -> SizedSvg future
-relationUseSvgWithInteractivity parts =
-    let
-        spaceWidth : Float
-        spaceWidth =
-            fontWidth
-
-        identifierTextSvg : SizedSvg future_
-        identifierTextSvg =
-            unselectableTextSvg parts.identifier
-
-        contentSvg : SizedSvg future
-        contentSvg =
-            horizontalCenteredSvg
-                [ identifierTextSvg
-                    |> sizedSvgPad
-                        { top = strokeWidth / 2
-                        , bottom = strokeWidth / 2
-                        , left = 0
-                        , right = spaceWidth
-                        }
-                , parts.argumentAsSvg
-                ]
-
-        fullWidth : Float
-        fullWidth =
-            strokeWidth + contentSvg.width + strokeWidth
-
-        shapeSvg : SizedSvg future
-        shapeSvg =
-            svgPolygon
-                [ domModifierFillUniform relationBackgroundColor
-                , parts.shapeEventListenModifier
-                ]
-                [ ( 0, strokeWidth )
-                , ( strokeWidth, 0 )
-                , ( fullWidth, 0 )
-                , ( fullWidth, contentSvg.height )
-                , ( strokeWidth, contentSvg.height )
-                , ( 0, contentSvg.height - strokeWidth )
-                ]
-    in
-    { height = contentSvg.height
-    , width = fullWidth
-    , svg =
-        svgStack
-            []
-            [ shapeSvg.svg
-            , svgStack
-                [ svgAttributeTranslate
-                    { x = strokeWidth
-                    , y = 0
-                    }
-                ]
-                [ contentSvg.svg ]
-            ]
-    }
-
-
-valueShapeSvg : ValueUiState -> SizedSvg future_
-valueShapeSvg value =
-    case value of
-        Variable variableName ->
-            variableShapeSvg variableName
-
-        ValueLookup valueLookup ->
-            valueLookupShapeSvg valueLookup
-
-
-valueSvg :
-    DragState
-    -> ValueUiState
-    -> SizedSvg { dragged : DragState, value : Maybe ValueUiState }
-valueSvg dragState =
-    \value ->
-        case value of
-            Variable variableName ->
-                variableShapeSvg variableName
-                    |> List.singleton
-                    |> sizedSvgStack
-                        [ domListenToPointerDown
-                            |> Web.Dom.modifierFutureMap
-                                (\pointerDownEventPosition ->
-                                    case pointerDownEventPosition of
-                                        Err _ ->
-                                            { dragged = dragState
-                                            , value = Just (Variable variableName)
-                                            }
-
-                                        Ok pointer ->
-                                            { dragged =
-                                                Just
-                                                    { x = pointer.x
-                                                    , y = pointer.y
-                                                    , offsetX = -strokeWidth
-                                                    , offsetY = -strokeWidth
-                                                    , block = BlockValue (Variable variableName)
-                                                    }
-                                            , value = Nothing
-                                            }
-                                )
-                        ]
-
-            ValueLookup valueLookup ->
-                valueLookupSvgWithInteractivity
-                    { listenToDragStart =
-                        domListenToPointerDown
-                            |> Web.Dom.modifierFutureMap
-                                (\pointerDownEventPosition ->
-                                    case pointerDownEventPosition of
-                                        Err _ ->
-                                            { dragged = dragState
-                                            , value = Just (ValueLookup valueLookup)
-                                            }
-
-                                        Ok pointer ->
-                                            { dragged =
-                                                Just
-                                                    { x = pointer.x
-                                                    , y = pointer.y
-                                                    , offsetX = -strokeWidth
-                                                    , offsetY = -strokeWidth
-                                                    , block = BlockValue (ValueLookup valueLookup)
-                                                    }
-                                            , value = Nothing
-                                            }
-                                )
-                    }
-                    (valueLookup
-                        |> FastDict.map
-                            (\entryKey entryValue ->
-                                valueOrHoleSvg valueLookupBackgroundColor dragState entryValue
-                                    |> sizedSvgFutureMap
-                                        (\entryValueFuture ->
-                                            { dragged = entryValueFuture.dragged
-                                            , value =
-                                                ValueLookup
-                                                    (valueLookup
-                                                        |> FastDict.update entryKey
-                                                            (\_ -> entryValueFuture.value |> Just)
-                                                    )
-                                                    |> Just
-                                            }
-                                        )
-                            )
-                    )
-
-
-valueLookupBackgroundColor : Color
-valueLookupBackgroundColor =
-    Color.rgb 0 0.06 0.19
-
-
-circleSvg : { radius : Float } -> List (Web.Dom.Modifier future) -> SizedSvg future
-circleSvg geometry modifiers =
-    { width = geometry.radius * 2
-    , height = geometry.radius * 2
-    , svg =
-        Web.Svg.element "circle"
-            (Web.Dom.attribute "r" (geometry.radius |> String.fromFloat)
-                :: modifiers
-            )
-            []
-    }
-
-
 valueLookupShapeSvg : FastDict.Dict String (Maybe ValueUiState) -> SizedSvg future_
 valueLookupShapeSvg valueLookup =
     valueLookupSvgWithInteractivity
         { listenToDragStart = Web.Dom.modifierNone }
         (valueLookup
             |> FastDict.map
-                (\entryKey entryValue ->
+                (\_ entryValue ->
                     valueOrHoleShapeSvg valueLookupBackgroundColor entryValue
                 )
         )
-
-
-valueLookupSvgWithInteractivity :
-    { listenToDragStart : Web.Dom.Modifier future }
-    -> FastDict.Dict String (SizedSvg future)
-    -> SizedSvg future
-valueLookupSvgWithInteractivity interactivity valueLookup =
-    let
-        radius : Float
-        radius =
-            strokeWidth
-    in
-    case valueLookup |> FastDict.toList of
-        [] ->
-            circleSvg { radius = radius }
-                [ interactivity.listenToDragStart
-                , domModifierFillUniform valueLookupBackgroundColor
-                , svgAttributeTranslate { x = radius, y = radius }
-                ]
-
-        entry0 :: entry1Up ->
-            let
-                entryListSvg : SizedSvg future
-                entryListSvg =
-                    (entry0 :: entry1Up)
-                        |> List.map
-                            (\( entryKey, entryValueSvg ) ->
-                                let
-                                    entryNameSvg : SizedSvg future_
-                                    entryNameSvg =
-                                        unselectableTextSvg entryKey
-                                in
-                                horizontalCenteredSvg
-                                    [ entryNameSvg
-                                        |> sizedSvgPad
-                                            { left = 0
-                                            , top = 0
-                                            , bottom = 0
-                                            , right = fontWidth
-                                            }
-                                    , entryValueSvg
-                                    ]
-                            )
-                        |> verticalSvg
-
-                shapeSvg : Web.Dom.Node future
-                shapeSvg =
-                    svgRoundedRect
-                        [ interactivity.listenToDragStart
-                        , domModifierFillUniform valueLookupBackgroundColor
-                        ]
-                        { radius = radius, width = fullWidth, height = fullHeight }
-                        |> .svg
-
-                fullHeight : Float
-                fullHeight =
-                    entryListSvg.height
-
-                fullWidth : Float
-                fullWidth =
-                    radius + entryListSvg.width
-            in
-            { width = fullWidth
-            , height = fullHeight
-            , svg =
-                svgStack
-                    []
-                    [ shapeSvg
-                    , entryListSvg.svg
-                        |> List.singleton
-                        |> svgStack
-                            [ svgAttributeTranslate { x = radius, y = 0 }
-                            ]
-                    ]
-            }
-
-
-verticalSvg :
-    List (SizedSvg future)
-    -> SizedSvg future
-verticalSvg =
-    \elements ->
-        let
-            elementsAsSvgs :
-                { combinedHeight : Float
-                , widthMaximum : Float
-                , svgsReverse : List (Web.Dom.Node future)
-                }
-            elementsAsSvgs =
-                elements
-                    |> List.foldl
-                        (\asSvg soFar ->
-                            { combinedHeight = soFar.combinedHeight + asSvg.height
-                            , widthMaximum = Basics.max soFar.widthMaximum asSvg.width
-                            , svgsReverse =
-                                soFar.svgsReverse
-                                    |> (::)
-                                        (asSvg.svg
-                                            |> List.singleton
-                                            |> svgStack
-                                                [ svgAttributeTranslate
-                                                    { x = 0, y = soFar.combinedHeight }
-                                                ]
-                                        )
-                            }
-                        )
-                        { combinedHeight = 0
-                        , widthMaximum = 0
-                        , svgsReverse = []
-                        }
-        in
-        { height = elementsAsSvgs.combinedHeight
-        , width = elementsAsSvgs.widthMaximum
-        , svg =
-            elementsAsSvgs.svgsReverse
-                |> List.reverse
-                |> svgStack []
-        }
-
-
-fontWidth : Float
-fontWidth =
-    fontSize * 0.42
-
-
-fontSize : Float
-fontSize =
-    20
-
-
-domListenToPointerDown : Web.Dom.Modifier (Result Json.Decode.Error { x : Float, y : Float })
-domListenToPointerDown =
-    Web.Dom.listenTo "pointerdown"
-        |> Web.Dom.modifierFutureMap
-            (\pointerDownEventJson ->
-                case
-                    pointerDownEventJson
-                        |> Json.Decode.decodeValue
-                            (Json.Decode.map2
-                                (\x y -> { x = x, y = y })
-                                (Json.Decode.field "clientX" Json.Decode.float)
-                                (Json.Decode.field "clientY" Json.Decode.float)
-                            )
-                of
-                    Err jsonDecodeError ->
-                        Err jsonDecodeError
-
-                    Ok pointer ->
-                        { x = pointer.x
-                        , y = pointer.y
-                        }
-                            |> Ok
-            )
-
-
-variableBackgroundColor : Color
-variableBackgroundColor =
-    Color.rgb 0 0.21 0.18
-
-
-variableShapeSvg : String -> SizedSvg future_
-variableShapeSvg =
-    \variableName ->
-        let
-            radius : Float
-            radius =
-                strokeWidth
-
-            nameSvg : SizedSvg future_
-            nameSvg =
-                unselectableTextSvg variableName
-
-            fullWidth : Float
-            fullWidth =
-                nameSvg.width + radius * 2
-
-            fullHeight : Float
-            fullHeight =
-                nameSvg.height + radius
-
-            backgroundSvg : Web.Dom.Node future_
-            backgroundSvg =
-                svgRoundedRect
-                    [ domModifierFillUniform variableBackgroundColor
-                    ]
-                    { radius = radius, width = fullWidth, height = fullHeight }
-                    |> .svg
-        in
-        { width = fullWidth
-        , height = fullHeight
-        , svg =
-            svgStack
-                []
-                [ backgroundSvg
-                , svgStack
-                    [ svgAttributeTranslate
-                        { x = radius
-                        , y = radius / 2
-                        }
-                    ]
-                    [ nameSvg.svg ]
-                ]
-        }
-
-
-missingThingBrightnessScale : Float
-missingThingBrightnessScale =
-    0.54
-
-
-colorBrightnessScaleBy : Float -> (Color -> Color)
-colorBrightnessScaleBy factor =
-    \color ->
-        let
-            colorComponents : { red : Float, green : Float, blue : Float, alpha : Float }
-            colorComponents =
-                color |> Color.toRgba
-        in
-        Color.rgba
-            (colorComponents.red * factor)
-            (colorComponents.green * factor)
-            (colorComponents.blue * factor)
-            colorComponents.alpha
-
-
-valueHoleSvg : Color -> DragState -> SizedSvg ValueUiState
-valueHoleSvg backgroundColor dragState =
-    let
-        shapeSvg : SizedSvg future_
-        shapeSvg =
-            valueHoleShapeSvg backgroundColor
-    in
-    { width = shapeSvg.width
-    , height = shapeSvg.height
-    , svg =
-        svgStack
-            [ case dragState of
-                Nothing ->
-                    Web.Dom.modifierNone
-
-                Just stateDragged ->
-                    case stateDragged.block of
-                        BlockFact _ ->
-                            Web.Dom.modifierNone
-
-                        BlockValue draggedValue ->
-                            Web.Dom.listenTo "pointerup"
-                                |> Web.Dom.modifierFutureMap (\_ -> draggedValue)
-            ]
-            [ shapeSvg.svg ]
-    }
-
-
-valueHoleShapeSvg : Color -> SizedSvg future_
-valueHoleShapeSvg backgroundColor =
-    let
-        radius : Float
-        radius =
-            strokeWidth
-
-        fullWidth : Float
-        fullWidth =
-            fontSize * 5 + radius * 2
-
-        fullHeight : Float
-        fullHeight =
-            fontSize + radius
-
-        backgroundSvg : Web.Dom.Node future_
-        backgroundSvg =
-            svgRoundedRect
-                [ domModifierFillUniform
-                    (backgroundColor |> colorBrightnessScaleBy missingThingBrightnessScale)
-                ]
-                { radius = radius, width = fullWidth, height = fullHeight }
-                |> .svg
-    in
-    { width = fullWidth
-    , height = fullHeight
-    , svg = backgroundSvg
-    }
-
-
-svgClosedPath :
-    List (Web.Dom.Modifier future)
-    -> { start : { x : Float, y : Float }, trail : List Svg.PathD.Segment }
-    -> Web.Dom.Node future
-svgClosedPath modifiers segments =
-    Web.Svg.element "path"
-        (Web.Dom.attribute "d"
-            (Svg.PathD.pathD
-                (case segments.trail of
-                    [] ->
-                        []
-
-                    trailSegment0 :: trailSegment1Up ->
-                        Svg.PathD.M ( segments.start.x, segments.start.y )
-                            :: (trailSegment0 :: trailSegment1Up)
-                            ++ [ Svg.PathD.Z ]
-                )
-            )
-            :: modifiers
-        )
-        []
-
-
-pathSegmentTopRightQuarterArcCounterclockwise :
-    { end : { x : Float, y : Float }, radius : Float }
-    -> List Svg.PathD.Segment
-pathSegmentTopRightQuarterArcCounterclockwise geometry =
-    pathDArc
-        { centerX = geometry.end.x - geometry.radius
-        , centerY = geometry.end.y
-        , radius = geometry.radius
-        , startAngle = Angle.turns (3 / 4)
-        , angleSpan = Angle.turns (1 / 4)
-        }
-
-
-pathSegmentTopLeftQuarterArcCounterclockwise :
-    { end : { x : Float, y : Float }, radius : Float }
-    -> List Svg.PathD.Segment
-pathSegmentTopLeftQuarterArcCounterclockwise geometry =
-    pathDArc
-        { centerX = geometry.end.x
-        , centerY = geometry.end.y + geometry.radius
-        , radius = geometry.radius
-        , startAngle = Angle.turns (1 / 2)
-        , angleSpan = Angle.turns (1 / 4)
-        }
-
-
-pathSegmentBottomLeftQuarterArcCounterclockwise :
-    { end : { x : Float, y : Float }, radius : Float }
-    -> List Svg.PathD.Segment
-pathSegmentBottomLeftQuarterArcCounterclockwise geometry =
-    pathDArc
-        { centerX = geometry.end.x + geometry.radius
-        , centerY = geometry.end.y
-        , radius = geometry.radius
-        , startAngle = Angle.turns (1 / 4)
-        , angleSpan = Angle.turns (1 / 4)
-        }
-
-
-pathSegmentBottomRightQuarterArcCounterclockwise :
-    { end : { x : Float, y : Float }, radius : Float }
-    -> List Svg.PathD.Segment
-pathSegmentBottomRightQuarterArcCounterclockwise geometry =
-    pathDArc
-        { centerX = geometry.end.x
-        , centerY = geometry.end.y - geometry.radius
-        , radius = geometry.radius
-        , startAngle = Angle.turns 0
-        , angleSpan = Angle.turns (1 / 4)
-        }
-
-
-svgRoundedRect :
-    List (Web.Dom.Modifier future)
-    -> { width : Float, height : Float, radius : Float }
-    -> SizedSvg future
-svgRoundedRect modifiers geometry =
-    { width = geometry.width
-    , height = geometry.height
-    , svg =
-        svgClosedPath
-            modifiers
-            { start = { x = 0, y = geometry.radius }
-            , trail =
-                [ pathSegmentTopLeftQuarterArcCounterclockwise { radius = geometry.radius, end = { x = geometry.radius, y = 0 } }
-                , [ Svg.PathD.L ( geometry.width - geometry.radius, 0 ) ]
-                , pathSegmentTopRightQuarterArcCounterclockwise { radius = geometry.radius, end = { x = geometry.width, y = geometry.radius } }
-                , [ Svg.PathD.L ( geometry.width, geometry.height - geometry.radius ) ]
-                , pathSegmentBottomRightQuarterArcCounterclockwise { radius = geometry.radius, end = { x = geometry.width - geometry.radius, y = geometry.height } }
-                , [ Svg.PathD.L ( geometry.radius, geometry.height ) ]
-                , pathSegmentBottomLeftQuarterArcCounterclockwise { radius = geometry.radius, end = { x = 0, y = geometry.height - geometry.radius } }
-                , [ Svg.PathD.L ( 0, geometry.radius ) ]
-                ]
-                    |> List.concat
-            }
-    }
-
-
-pathDArc :
-    { centerX : Float
-    , centerY : Float
-    , radius : Float
-    , startAngle : Angle
-    , angleSpan : Angle
-    }
-    -> List Svg.PathD.Segment
-pathDArc geometry =
-    let
-        arcGeometry : Arc2d.Arc2d Length.Meters coordinates
-        arcGeometry =
-            Arc2d.with
-                { centerPoint = Point2d.meters geometry.centerX geometry.centerY
-                , startAngle = geometry.startAngle |> Angle.normalize
-                , sweptAngle = geometry.angleSpan |> Angle.normalize
-                , radius = Length.meters geometry.radius
-                }
-
-        maxSegmentAngle : Angle
-        maxSegmentAngle =
-            Angle.turns (1 / 3)
-
-        numSegments : Int
-        numSegments =
-            1 + floor (abs (Quantity.ratio (arcGeometry |> Arc2d.sweptAngle) maxSegmentAngle))
-    in
-    Parameter1d.trailing numSegments
-        (\parameterValue ->
-            Svg.PathD.A
-                ( Arc2d.radius arcGeometry |> Length.inMeters
-                , Arc2d.radius arcGeometry |> Length.inMeters
-                )
-                0
-                False
-                (arcGeometry |> Arc2d.sweptAngle |> Quantity.greaterThanOrEqualTo Quantity.zero)
-                (Arc2d.pointOn arcGeometry parameterValue |> Point2d.toTuple Length.inMeters)
-        )
-
-
-domModifierFillUniform : Color -> Web.Dom.Modifier future_
-domModifierFillUniform color =
-    Web.Dom.attribute "fill" (color |> Color.toCssString)
 
 
 port toJs : Json.Encode.Value -> Cmd event_

@@ -87,19 +87,18 @@ allJustMap elementToMaybe =
 
 
 firstJustMap : (a -> Maybe b) -> List a -> Maybe b
-firstJustMap elementToMaybeFound =
-    \list ->
-        case list of
-            [] ->
-                Nothing
+firstJustMap elementToMaybeFound list =
+    case list of
+        [] ->
+            Nothing
 
-            head :: tail ->
-                case elementToMaybeFound head of
-                    Nothing ->
-                        firstJustMap elementToMaybeFound tail
+        head :: tail ->
+            case elementToMaybeFound head of
+                Nothing ->
+                    firstJustMap elementToMaybeFound tail
 
-                    Just found ->
-                        Just found
+                Just found ->
+                    Just found
 
 
 oneOfEach : List (List a) -> List (List a)

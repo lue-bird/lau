@@ -142,48 +142,6 @@ valueVariablesMap variableChange =
                     |> ValueLookup
 
 
-factExpand : Project -> (FactWithVariableName ScopedVariableName -> List FactBranch)
-factExpand project =
-    \fact ->
-        case fact of
-            RelationUse relation ->
-                BranchValidRelation
-                    { identifier = relation.identifier
-                    , argument =
-                        relation.argument
-                            |> valueVariablesMap
-                                (\v -> Variable v)
-                    }
-                    |> List.singleton
-
-            Equal values ->
-                values
-                    |> List.map
-                        (\value ->
-                            value
-                                |> valueVariablesMap
-                                    (\variableName -> variableName |> Variable)
-                        )
-                    |> equalListExpand
-
-            Not inverseFact ->
-                inverseFact
-                    |> factExpand project
-                    |> List.concatMap factBranchInvert
-                    |> BranchAnd
-                    |> List.singleton
-
-            All parts ->
-                parts
-                    |> List.map (\part -> part |> factExpand project)
-                    |> List.LocalExtra.oneOfEach
-                    |> List.map (\branchParts -> branchParts |> BranchAnd)
-
-            Any branches ->
-                branches
-                    |> List.concatMap (\orBranch -> orBranch |> factExpand project)
-
-
 valueToValueLookup : ValueWithVariableName variableName -> Maybe (FastDict.Dict String (ValueWithVariableName variableName))
 valueToValueLookup =
     \value ->
@@ -193,6 +151,12 @@ valueToValueLookup =
 
             ValueLookup valueLookup ->
                 valueLookup |> Just
+
+
+scopedVariableIsDeeperInThan : ScopedVariableName -> (ScopedVariableName -> Bool)
+scopedVariableIsDeeperInThan bVariable =
+    \aVariable ->
+        (aVariable.scope |> List.length) > (bVariable.scope |> List.length)
 
 
 equalListExpand :
@@ -355,12 +319,6 @@ equalListExpand =
             |> Maybe.withDefault []
 
 
-scopedVariableIsDeeperInThan : ScopedVariableName -> (ScopedVariableName -> Bool)
-scopedVariableIsDeeperInThan bVariable =
-    \aVariable ->
-        (aVariable.scope |> List.length) > (bVariable.scope |> List.length)
-
-
 valueToVariable : ValueWithVariableName variableName -> Maybe variableName
 valueToVariable =
     \value ->
@@ -370,6 +328,46 @@ valueToVariable =
 
             Variable variableName ->
                 variableName |> Just
+
+
+factExpand : FactWithVariableName ScopedVariableName -> List FactBranch
+factExpand =
+    \fact ->
+        case fact of
+            RelationUse relation ->
+                BranchValidRelation
+                    { identifier = relation.identifier
+                    , argument =
+                        relation.argument
+                            |> valueVariablesMap
+                                (\v -> Variable v)
+                    }
+                    |> List.singleton
+
+            Equal values ->
+                values
+                    |> List.map
+                        (\value ->
+                            value |> valueVariablesMap Variable
+                        )
+                    |> equalListExpand
+
+            Not inverseFact ->
+                inverseFact
+                    |> factExpand
+                    |> List.concatMap factBranchInvert
+                    |> BranchAnd
+                    |> List.singleton
+
+            All parts ->
+                parts
+                    |> List.map factExpand
+                    |> List.LocalExtra.oneOfEach
+                    |> List.map (\branchParts -> branchParts |> BranchAnd)
+
+            Any branches ->
+                branches
+                    |> List.concatMap factExpand
 
 
 {-| Find a value that satisfies the constraints for an argument variable in the main definition
@@ -388,88 +386,9 @@ evaluate =
                         { scope = [], name = mainImplementation.argumentVariable }
                             |> Variable
                     }
-                    |> factExpand project
+                    |> factExpand
                     |> factBranchesExpandFully project
                     |> Ok
-
-
-factBranchExpand : Project -> (FactBranch -> List FactBranch)
-factBranchExpand project =
-    \factBranch ->
-        (case factBranch of
-            BranchValid ->
-                [ BranchValid ]
-
-            BranchInvalid reason ->
-                [ BranchInvalid reason ]
-
-            BranchValidVariableSubstitution substitution ->
-                [ BranchValidVariableSubstitution substitution ]
-
-            BranchInvalidVariableSubstitution substitution ->
-                [ BranchInvalidVariableSubstitution substitution ]
-
-            BranchValidRelation relation ->
-                case project.relationDefinitions |> FastDict.get relation.identifier of
-                    Nothing ->
-                        BranchInvalid
-                            ([ "The relation "
-                             , relation.identifier
-                             , " isn't defined. Define it or choose a differently named relation."
-                             ]
-                                |> String.concat
-                            )
-                            |> List.singleton
-
-                    Just definition ->
-                        definition.equivalentFact
-                            |> factVariablesMap
-                                (\variableName ->
-                                    if variableName == definition.argumentVariable then
-                                        relation.argument
-
-                                    else
-                                        Variable { scope = [ relation.identifier ], name = variableName }
-                                )
-                            |> factExpand project
-
-            BranchInvalidRelation inverseRelation ->
-                case project.relationDefinitions |> FastDict.get inverseRelation.identifier of
-                    Nothing ->
-                        BranchInvalid
-                            ([ "The relation "
-                             , inverseRelation.identifier
-                             , " isn't defined. Define it or choose a differently named relation."
-                             ]
-                                |> String.concat
-                            )
-                            |> List.singleton
-
-                    Just definition ->
-                        definition.equivalentFact
-                            |> factVariablesMap
-                                (\variableName ->
-                                    if variableName == definition.argumentVariable then
-                                        inverseRelation.argument
-
-                                    else
-                                        Variable { scope = [ inverseRelation.identifier ], name = variableName }
-                                )
-                            |> factExpand project
-                            |> List.concatMap factBranchInvert
-                            |> BranchAnd
-                            |> List.singleton
-
-            BranchAnd parts ->
-                parts |> branchAndExpand project
-        )
-            |> (\a ->
-                    let
-                        _ =
-                            Debug.log "fact expanded to" (a |> List.map factBranchToString |> String.join "\n")
-                    in
-                    a
-               )
 
 
 scopedVariableNameToString : ScopedVariableName -> String
@@ -560,6 +479,85 @@ valueToString =
                 , "}"
                 ]
                     |> String.concat
+
+
+factBranchExpand : Project -> (FactBranch -> List FactBranch)
+factBranchExpand project =
+    \factBranch ->
+        (case factBranch of
+            BranchValid ->
+                [ BranchValid ]
+
+            BranchInvalid reason ->
+                [ BranchInvalid reason ]
+
+            BranchValidVariableSubstitution substitution ->
+                [ BranchValidVariableSubstitution substitution ]
+
+            BranchInvalidVariableSubstitution substitution ->
+                [ BranchInvalidVariableSubstitution substitution ]
+
+            BranchValidRelation relation ->
+                case project.relationDefinitions |> FastDict.get relation.identifier of
+                    Nothing ->
+                        BranchInvalid
+                            ([ "The relation "
+                             , relation.identifier
+                             , " isn't defined. Define it or choose a differently named relation."
+                             ]
+                                |> String.concat
+                            )
+                            |> List.singleton
+
+                    Just definition ->
+                        definition.equivalentFact
+                            |> factVariablesMap
+                                (\variableName ->
+                                    if variableName == definition.argumentVariable then
+                                        relation.argument
+
+                                    else
+                                        Variable { scope = [ relation.identifier ], name = variableName }
+                                )
+                            |> factExpand
+
+            BranchInvalidRelation inverseRelation ->
+                case project.relationDefinitions |> FastDict.get inverseRelation.identifier of
+                    Nothing ->
+                        BranchInvalid
+                            ([ "The relation "
+                             , inverseRelation.identifier
+                             , " isn't defined. Define it or choose a differently named relation."
+                             ]
+                                |> String.concat
+                            )
+                            |> List.singleton
+
+                    Just definition ->
+                        definition.equivalentFact
+                            |> factVariablesMap
+                                (\variableName ->
+                                    if variableName == definition.argumentVariable then
+                                        inverseRelation.argument
+
+                                    else
+                                        Variable { scope = [ inverseRelation.identifier ], name = variableName }
+                                )
+                            |> factExpand
+                            |> List.concatMap factBranchInvert
+                            |> BranchAnd
+                            |> List.singleton
+
+            BranchAnd parts ->
+                parts |> branchAndExpand project
+        )
+            |> (\a ->
+                    let
+                        _ =
+                            Debug.log "fact expanded to" (a |> List.map factBranchToString |> String.join "\n")
+                    in
+                    a
+               )
 
 
 factVariablesMap :
@@ -673,10 +671,6 @@ factBranchToDetermined =
         case fact of
             BranchValidVariableSubstitution substitution ->
                 case substitution.variable.scope of
-                    _ :: _ ->
-                        -- continue expanding
-                        Nothing
-
                     [] ->
                         case substitution.value |> valueToValueLookup |> Maybe.andThen valueLookupToLookup of
                             Nothing ->
@@ -684,6 +678,10 @@ factBranchToDetermined =
 
                             Just lookup ->
                                 lookup |> Just
+
+                    _ :: _ ->
+                        -- continue expanding
+                        Nothing
 
             BranchAnd _ ->
                 -- continue expanding
@@ -753,17 +751,6 @@ type FactBranch
     | BranchAnd (List FactBranch)
 
 
-factBranchIsInvalid : FactBranch -> Maybe String
-factBranchIsInvalid =
-    \factBranch ->
-        case factBranch of
-            BranchInvalid reason ->
-                Just reason
-
-            _ ->
-                Nothing
-
-
 branchAndExpand : Project -> (List FactBranch -> List FactBranch)
 branchAndExpand project =
     \parts ->
@@ -783,7 +770,7 @@ branchAndExpand project =
                         let
                             notObviouslyValidParts : List FactBranch
                             notObviouslyValidParts =
-                                parts
+                                (onePart :: twoPart :: otherParts)
                                     |> List.filterMap
                                         (\part ->
                                             case part of
@@ -875,6 +862,17 @@ branchAndExpand project =
                                     |> List.singleton
 
 
+factBranchIsInvalid : FactBranch -> Maybe String
+factBranchIsInvalid =
+    \factBranch ->
+        case factBranch of
+            BranchInvalid reason ->
+                Just reason
+
+            _ ->
+                Nothing
+
+
 factBranchVariablesMap :
     (ScopedVariableName -> ValueWithVariableName ScopedVariableName)
     -> (FactBranch -> FactBranch)
@@ -944,11 +942,13 @@ different2Expand =
             ( Variable aVariable, Variable bVariable ) ->
                 [ if aVariable == bVariable then
                     BranchInvalid
-                        ("expected variables "
-                            ++ aVariable.name
-                            ++ " and "
-                            ++ bVariable.name
-                            ++ " to be different but they're set to be equal"
+                        ([ "expected variables "
+                         , aVariable.name
+                         , " and "
+                         , bVariable.name
+                         , " to be different but they're set to be equal"
+                         ]
+                            |> String.concat
                         )
 
                   else
