@@ -61,5 +61,8 @@ npx vite
 
   - you don't need to worry about caching and many other optimizations due to laziness
   - uis written in lau where interacting with the outside world is simple and safe which you can even embed in lau code itself
+  - identification not by name internally (so that switching languages is easier, renaming is not a breaking change and names can overlap)
   - a story for exhaustive case handling (current workaround with giving value lookup might be a bit rough?)
   - value lookup entry moving
+  - other shapes of values (multi-set, so untagged entries) to allow for nicer syntax when argument order doesn't matter e.g. with sum, product, min, max, equals, union, intersection etc.
+
