@@ -289,41 +289,28 @@ interface state =
                 []
             , state.relationDefinitions
                 |> FastDict.toList
-                |> List.foldl
-                    (\( name, definition ) soFar ->
-                        let
-                            definitionAsSvg =
-                                relationDefinitionSvg state.dragged
-                                    { name = name
-                                    , parameter = definition.parameter
-                                    , equivalentFact = definition.equivalentFact
+                |> List.map
+                    (\( name, definition ) ->
+                        relationDefinitionSvg state.dragged
+                            { name = name
+                            , parameter = definition.parameter
+                            , equivalentFact = definition.equivalentFact
+                            }
+                            |> sizedSvgFutureMap
+                                (\relationUiState ->
+                                    { state
+                                        | dragged = relationUiState.dragged
+                                        , relationDefinitions =
+                                            state.relationDefinitions
+                                                |> FastDict.update name
+                                                    (\_ -> Just relationUiState.relationDefinition)
                                     }
-                                    |> sizedSvgFutureMap
-                                        (\relationUiState ->
-                                            { state
-                                                | dragged = relationUiState.dragged
-                                                , relationDefinitions =
-                                                    state.relationDefinitions
-                                                        |> FastDict.update name
-                                                            (\_ -> Just relationUiState.relationDefinition)
-                                            }
-                                        )
-                        in
-                        { height = soFar.height + 50 + definitionAsSvg.height
-                        , svgsReverse =
-                            soFar.svgsReverse
-                                |> (::)
-                                    (svgStack
-                                        [ svgAttributeTranslate { x = 0, y = soFar.height + 50 } ]
-                                        [ definitionAsSvg.svg ]
-                                    )
-                        }
+                                )
+                            |> sizedSvgPad { bottom = 50, top = 0, left = 0, right = 0 }
                     )
-                    { height = 0
-                    , svgsReverse = []
-                    }
-                |> .svgsReverse
-                |> List.reverse
+                |> verticalSvg
+                |> .svg
+                |> List.singleton
                 |> svgStack
                     [ svgAttributeTranslate { x = 140, y = 140 } ]
             , state.strayThings
