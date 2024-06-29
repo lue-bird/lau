@@ -19,18 +19,18 @@ Reduces things you need to know and keep in your mind.
 
   - language evaluation isn't working just yet
   - studio
-      - unify any/all with and without drag versions by asking as arguments for conversion functions of transformed arguments
       - block sidebar
           - fact blocks, empty value lookup
           - variable creating
           - relation definition creating
           - existing variables, existing relation definitions
-      - fact/variable/value lookup deleting
-      - value lookup entry deleting
-      - relation definition deleting
-      - value lookup entry adding
-      - variable renaming
-      - relation renaming
+      - block context action
+          - fact/variable/value lookup deleting
+          - value lookup entry deleting
+          - relation definition deleting
+          - value lookup entry adding
+          - variable renaming
+          - relation renaming
       - evaluation frame
 
 ## web
