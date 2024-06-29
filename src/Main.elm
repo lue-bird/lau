@@ -754,46 +754,34 @@ verticalFactListPolygonPoints :
     { headerWidth : Float
     , headerHeight : Float
     , sideWidth : Float
+    , elementsHeight : Float
+    , elementsWidth : Float
     }
-    -> { height : Float, width : Float, svgs : List { element_ | y : Float } }
     -> List ( Float, Float )
-verticalFactListPolygonPoints sizes elementsSvg =
+verticalFactListPolygonPoints sizes =
     let
         fullHeight : Float
         fullHeight =
             sizes.headerHeight
-                + elementsSvg.height
+                + sizes.elementsHeight
                 + sizes.sideWidth
 
         fullWidth : Float
         fullWidth =
             sizes.sideWidth
-                + Basics.max elementsSvg.width sizes.headerWidth
+                + Basics.max sizes.elementsWidth sizes.headerWidth
     in
     [ ( fullWidth, sizes.headerHeight )
     , ( fullWidth, 0 )
     , ( sizes.sideWidth, 0 )
     , ( 0, strokeWidth )
-    , ( 0, sizes.headerHeight + elementsSvg.height )
+    , ( 0, sizes.headerHeight + sizes.elementsHeight )
     , ( sizes.sideWidth, fullHeight )
     , ( fullWidth, fullHeight )
-    , ( fullWidth, sizes.headerHeight + elementsSvg.height )
-    , ( sizes.sideWidth + strokeWidth, sizes.headerHeight + elementsSvg.height )
-    , ( sizes.sideWidth, sizes.headerHeight + elementsSvg.height - strokeWidth )
+    , ( fullWidth, sizes.headerHeight + sizes.elementsHeight )
+    , ( sizes.sideWidth + strokeWidth, sizes.headerHeight + sizes.elementsHeight )
+    , ( sizes.sideWidth + strokeWidth, sizes.headerHeight )
     ]
-        ++ (elementsSvg.svgs
-                |> List.drop 1
-                |> List.concatMap
-                    (\branchAsSvg ->
-                        [ ( sizes.sideWidth, sizes.headerHeight + branchAsSvg.y - strokeWidth )
-                        , ( sizes.sideWidth + strokeWidth, sizes.headerHeight + branchAsSvg.y )
-                        , ( sizes.sideWidth, sizes.headerHeight + branchAsSvg.y + strokeWidth )
-                        ]
-                    )
-           )
-        ++ [ ( sizes.sideWidth, sizes.headerHeight + strokeWidth )
-           , ( sizes.sideWidth + strokeWidth, sizes.headerHeight )
-           ]
 
 
 factSvg :
@@ -1050,15 +1038,7 @@ blockVerticalFactListSvg config =
                                                         )
                                             )
 
-        elementsAndInsertHolesSvg :
-            { width : Float
-            , height : Float
-            , svgs :
-                List
-                    { y : Float
-                    , svg : Web.Dom.Node { dragged : DragState, elements : List FactUiState }
-                    }
-            }
+        elementsAndInsertHolesSvg : SizedSvg { dragged : DragState, elements : List FactUiState }
         elementsAndInsertHolesSvg =
             let
                 elementsSvgs : List (SizedSvg { dragged : DragState, elements : List FactUiState })
@@ -1115,8 +1095,9 @@ blockVerticalFactListSvg config =
                     { headerWidth = headerWidth
                     , headerHeight = headerHeight
                     , sideWidth = sideWidth
+                    , elementsWidth = elementsAndInsertHolesSvg.width
+                    , elementsHeight = elementsAndInsertHolesSvg.height
                     }
-                    elementsAndInsertHolesSvg
                 )
     in
     { width = shapeSvg.width
@@ -1134,21 +1115,12 @@ blockVerticalFactListSvg config =
                 [ blockNameStringSvg.svg ]
             , stackSvg
                 [ svgAttributeTranslate { x = sideWidth, y = headerHeight } ]
-                [ elementsAndInsertHolesSvg.svgs
-                    |> List.map
-                        (\elementAsSvg ->
-                            elementAsSvg
-                                |> .svg
-                                |> Web.Dom.futureMap
-                                    (\future ->
-                                        { dragged = future.dragged, elements = Just future.elements }
-                                    )
-                                |> List.singleton
-                                |> stackSvg
-                                    [ svgAttributeTranslate { x = 0, y = elementAsSvg.y }
-                                    ]
+                [ elementsAndInsertHolesSvg
+                    |> .svg
+                    |> Web.Dom.futureMap
+                        (\future ->
+                            { dragged = future.dragged, elements = Just future.elements }
                         )
-                    |> stackSvg []
                 ]
             ]
     }
@@ -1189,15 +1161,7 @@ blockVerticalFactListShapeSvg config =
         sideWidth =
             strokeWidth
 
-        elementsSvg :
-            { width : Float
-            , height : Float
-            , svgs :
-                List
-                    { y : Float
-                    , svg : Web.Dom.Node future_
-                    }
-            }
+        elementsSvg : SizedSvg future_
         elementsSvg =
             (case config.elements of
                 [] ->
@@ -1230,8 +1194,9 @@ blockVerticalFactListShapeSvg config =
                     { headerWidth = headerWidth
                     , headerHeight = headerHeight
                     , sideWidth = sideWidth
+                    , elementsWidth = elementsSvg.width
+                    , elementsHeight = elementsSvg.height
                     }
-                    elementsSvg
                 )
     in
     { width = shapeSvg.width
@@ -1249,18 +1214,7 @@ blockVerticalFactListShapeSvg config =
                 [ blockNameTextSvg.svg ]
             , stackSvg
                 [ svgAttributeTranslate { x = sideWidth, y = headerHeight } ]
-                [ elementsSvg
-                    |> .svgs
-                    |> List.map
-                        (\branchAsSvg ->
-                            branchAsSvg.svg
-                                |> List.singleton
-                                |> stackSvg
-                                    [ svgAttributeTranslate { x = 0, y = branchAsSvg.y }
-                                    ]
-                        )
-                    |> stackSvg []
-                ]
+                [ elementsSvg.svg ]
             ]
     }
 
@@ -1745,16 +1699,8 @@ valueLookupSvgWithInteractivity interactivity valueLookup =
 
         entry0 :: entry1Up ->
             let
-                entrySvgs :
-                    { width : Float
-                    , height : Float
-                    , svgs :
-                        List
-                            { y : Float
-                            , svg : Web.Dom.Node future
-                            }
-                    }
-                entrySvgs =
+                entryListSvg : SizedSvg future
+                entryListSvg =
                     (entry0 :: entry1Up)
                         |> List.map
                             (\( entryKey, entryValueSvg ) ->
@@ -1803,11 +1749,11 @@ valueLookupSvgWithInteractivity interactivity valueLookup =
 
                 fullHeight : Float
                 fullHeight =
-                    entrySvgs.height
+                    entryListSvg.height
 
                 fullWidth : Float
                 fullWidth =
-                    radius + entrySvgs.width
+                    radius + entryListSvg.width
             in
             { width = fullWidth
             , height = fullHeight
@@ -1815,13 +1761,8 @@ valueLookupSvgWithInteractivity interactivity valueLookup =
                 stackSvg
                     []
                     [ shapeSvg
-                    , entrySvgs.svgs
-                        |> List.map
-                            (\entryAsSvg ->
-                                entryAsSvg.svg
-                                    |> List.singleton
-                                    |> stackSvg [ svgAttributeTranslate { x = 0, y = entryAsSvg.y } ]
-                            )
+                    , entryListSvg.svg
+                        |> List.singleton
                         |> stackSvg
                             [ svgAttributeTranslate { x = radius, y = 0 }
                             ]
@@ -1831,29 +1772,17 @@ valueLookupSvgWithInteractivity interactivity valueLookup =
 
 verticalSvg :
     List (SizedSvg future)
-    ->
-        { width : Float
-        , height : Float
-        , svgs :
-            List
-                { y : Float
-                , svg : Web.Dom.Node future
-                }
-        }
+    -> SizedSvg future
 verticalSvg =
-    \facts ->
+    \elements ->
         let
-            factsAsSvgs :
+            elementsAsSvgs :
                 { combinedHeight : Float
                 , widthMaximum : Float
-                , svgsReverse :
-                    List
-                        { y : Float
-                        , svg : Web.Dom.Node future
-                        }
+                , svgsReverse : List (Web.Dom.Node future)
                 }
-            factsAsSvgs =
-                facts
+            elementsAsSvgs =
+                elements
                     |> List.foldl
                         (\asSvg soFar ->
                             { combinedHeight = soFar.combinedHeight + asSvg.height
@@ -1861,9 +1790,13 @@ verticalSvg =
                             , svgsReverse =
                                 soFar.svgsReverse
                                     |> (::)
-                                        { svg = asSvg.svg
-                                        , y = soFar.combinedHeight
-                                        }
+                                        (asSvg.svg
+                                            |> List.singleton
+                                            |> stackSvg
+                                                [ svgAttributeTranslate
+                                                    { x = 0, y = soFar.combinedHeight }
+                                                ]
+                                        )
                             }
                         )
                         { combinedHeight = 0
@@ -1871,11 +1804,12 @@ verticalSvg =
                         , svgsReverse = []
                         }
         in
-        { height = factsAsSvgs.combinedHeight
-        , width = factsAsSvgs.widthMaximum
-        , svgs =
-            factsAsSvgs.svgsReverse
+        { height = elementsAsSvgs.combinedHeight
+        , width = elementsAsSvgs.widthMaximum
+        , svg =
+            elementsAsSvgs.svgsReverse
                 |> List.reverse
+                |> stackSvg []
         }
 
 
