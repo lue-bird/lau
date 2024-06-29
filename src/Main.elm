@@ -1241,7 +1241,7 @@ factAnySvg dragState branches =
 
 factNotBackgroundColor : Color
 factNotBackgroundColor =
-    Color.rgb 0.24 0.06 0
+    Color.rgb 0.25 0.02 0
 
 
 factNotSvgWithInteractivity :
