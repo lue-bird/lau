@@ -1,5 +1,14 @@
 port module Main exposing (State, main)
 
+{- dev notes
+
+   Dragging offset:
+   Apparently offset does not work in svg
+   so we currently just take the top left with a stroke width distance.
+   future alternative could be a custom svg g element that triggers a custom event
+   https://discourse.elm-lang.org/t/dispatching-custom-events-only-if-needed/2740/7
+-}
+
 import Angle exposing (Angle)
 import Arc2d
 import Color exposing (Color)
@@ -831,8 +840,8 @@ factSvg dragState fact =
                                             Just
                                                 { x = pointer.x
                                                 , y = pointer.y
-                                                , offsetX = -fontSize
-                                                , offsetY = -fontSize
+                                                , offsetX = -strokeWidth
+                                                , offsetY = -strokeWidth
                                                 , block = BlockFact (Not maybeFactInverse)
                                                 }
                                         , fact = Nothing
@@ -871,8 +880,8 @@ factSvg dragState fact =
                                             Just
                                                 { x = pointer.x
                                                 , y = pointer.y
-                                                , offsetX = -fontSize
-                                                , offsetY = -fontSize
+                                                , offsetX = -strokeWidth
+                                                , offsetY = -strokeWidth
                                                 , block = BlockFact (Equal toEquate)
                                                 }
                                         , fact = Nothing
@@ -897,8 +906,8 @@ factSvg dragState fact =
                                             Just
                                                 { x = pointer.x
                                                 , y = pointer.y
-                                                , offsetX = -fontSize
-                                                , offsetY = -fontSize
+                                                , offsetX = -strokeWidth
+                                                , offsetY = -strokeWidth
                                                 , block = BlockFact (RelationUse relationUse)
                                                 }
                                         , fact = Nothing
@@ -1083,8 +1092,8 @@ blockVerticalFactListSvg config =
                                         Just
                                             { x = pointer.x
                                             , y = pointer.y
-                                            , offsetX = -fontSize
-                                            , offsetY = -fontSize
+                                            , offsetX = -strokeWidth
+                                            , offsetY = -strokeWidth
                                             , block = BlockFact config.fact
                                             }
                                     , elements = Nothing
@@ -1641,8 +1650,8 @@ valueLookupSvg dragState valueLookup =
                                     Just
                                         { x = pointer.x
                                         , y = pointer.y
-                                        , offsetX = -fontSize
-                                        , offsetY = -fontSize
+                                        , offsetX = -strokeWidth
+                                        , offsetY = -strokeWidth
                                         , block = BlockValue (ValueLookup valueLookup)
                                         }
                                 , valueLookup = Nothing
@@ -1828,13 +1837,6 @@ fontSize =
     20
 
 
-
--- TODO apparently offset does not work in svg
--- so we currently just take the "grab center"
--- future alternative could be a custom g element that triggers a custom event
--- https://discourse.elm-lang.org/t/dispatching-custom-events-only-if-needed/2740/7
-
-
 domListenToPointerDown : Web.Dom.Modifier (Result Json.Decode.Error { x : Float, y : Float })
 domListenToPointerDown =
     Web.Dom.listenTo "pointerdown"
@@ -1885,8 +1887,8 @@ variableSvg dragState variableName =
                                     Just
                                         { x = pointer.x
                                         , y = pointer.y
-                                        , offsetX = -fontSize
-                                        , offsetY = -fontSize
+                                        , offsetX = -strokeWidth
+                                        , offsetY = -strokeWidth
                                         , block = BlockValue (Variable variableName)
                                         }
                                 , variable = Nothing
