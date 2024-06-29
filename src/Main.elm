@@ -531,6 +531,11 @@ relationBackgroundColor =
     Color.rgb 0.22 0.14 0
 
 
+strokeWidth : Float
+strokeWidth =
+    fontSize
+
+
 relationDefinitionSvg :
     DragState
     ->
@@ -548,10 +553,6 @@ relationDefinitionSvg :
             }
 relationDefinitionSvg dragState definition =
     let
-        strokeWidth : Float
-        strokeWidth =
-            fontSize
-
         headerWidth : Float
         headerWidth =
             strokeWidth
@@ -753,11 +754,10 @@ verticalFactListPolygonPoints :
     { headerWidth : Float
     , headerHeight : Float
     , sideWidth : Float
-    , strokeWidth : Float
     }
     -> { height : Float, width : Float, svgs : List { element_ | y : Float } }
     -> List ( Float, Float )
-verticalFactListPolygonPoints { headerWidth, headerHeight, sideWidth, strokeWidth } elementsSvg =
+verticalFactListPolygonPoints { headerWidth, headerHeight, sideWidth } elementsSvg =
     let
         fullHeight : Float
         fullHeight =
@@ -995,10 +995,6 @@ blockVerticalFactListSvg :
     -> SizedSvg { dragged : DragState, elements : Maybe (List FactUiState) }
 blockVerticalFactListSvg config =
     let
-        strokeWidth : Float
-        strokeWidth =
-            fontSize
-
         sideWidth : Float
         sideWidth =
             strokeWidth
@@ -1119,7 +1115,6 @@ blockVerticalFactListSvg config =
                     { headerWidth = headerWidth
                     , headerHeight = headerHeight
                     , sideWidth = sideWidth
-                    , strokeWidth = strokeWidth
                     }
                     elementsAndInsertHolesSvg
                 )
@@ -1190,10 +1185,6 @@ blockVerticalFactListShapeSvg :
     -> SizedSvg future_
 blockVerticalFactListShapeSvg config =
     let
-        strokeWidth : Float
-        strokeWidth =
-            fontSize
-
         sideWidth : Float
         sideWidth =
             strokeWidth
@@ -1239,7 +1230,6 @@ blockVerticalFactListShapeSvg config =
                     { headerWidth = headerWidth
                     , headerHeight = headerHeight
                     , sideWidth = sideWidth
-                    , strokeWidth = strokeWidth
                     }
                     elementsSvg
                 )
@@ -1307,10 +1297,6 @@ factNotSvgWithInteractivity :
     -> SizedSvg future
 factNotSvgWithInteractivity parts =
     let
-        strokeWidth : Float
-        strokeWidth =
-            fontSize
-
         sideWidth : Float
         sideWidth =
             strokeWidth
@@ -1400,10 +1386,6 @@ factInsertHoleSvg backgroundColor dragState =
 factInsertHoleShapeSvg : Color -> SizedSvg future_
 factInsertHoleShapeSvg backgroundColor =
     let
-        strokeWidth : Float
-        strokeWidth =
-            fontSize
-
         fullWidth : Float
         fullWidth =
             strokeWidth
@@ -1435,10 +1417,6 @@ factEqualsSvgWithInteractivity :
     -> SizedSvg future
 factEqualsSvgWithInteractivity parts =
     let
-        strokeWidth : Float
-        strokeWidth =
-            fontSize
-
         fullWidth : Float
         fullWidth =
             strokeWidth
@@ -1558,10 +1536,6 @@ relationUseSvgWithInteractivity :
     -> SizedSvg future
 relationUseSvgWithInteractivity parts =
     let
-        strokeWidth : Float
-        strokeWidth =
-            fontSize
-
         fullWidth : Float
         fullWidth =
             strokeWidth
@@ -1759,7 +1733,7 @@ valueLookupSvgWithInteractivity interactivity valueLookup =
     let
         radius : Float
         radius =
-            fontSize
+            strokeWidth
     in
     case valueLookup |> FastDict.toList of
         [] ->
@@ -2000,7 +1974,7 @@ variableShapeSvg =
         let
             radius : Float
             radius =
-                fontSize
+                strokeWidth
 
             nameSvg : SizedSvg future_
             nameSvg =
@@ -2092,7 +2066,7 @@ valueHoleShapeSvg backgroundColor =
     let
         radius : Float
         radius =
-            fontSize
+            strokeWidth
 
         fullWidth : Float
         fullWidth =
@@ -2219,7 +2193,12 @@ svgRoundedRect modifiers geometry =
 
 
 pathDArc :
-    { centerX : Float, centerY : Float, radius : Float, startAngle : Angle, angleSpan : Angle }
+    { centerX : Float
+    , centerY : Float
+    , radius : Float
+    , startAngle : Angle
+    , angleSpan : Angle
+    }
     -> List Svg.PathD.Segment
 pathDArc geometry =
     let
