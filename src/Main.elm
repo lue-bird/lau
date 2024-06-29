@@ -677,8 +677,7 @@ relationDefinitionSvg dragState definition =
 factNotShapeSvg : Maybe FactUiState -> SizedSvg future_
 factNotShapeSvg maybeFactInverse =
     factNotSvgWithInteractivity
-        { maybeFactInverse = maybeFactInverse
-        , factInverseSvg =
+        { factInverseSvg =
             factOrHoleShapeSvg factNotBackgroundColor maybeFactInverse
         , shapeListenModifier = Web.Dom.modifierNone
         }
@@ -831,7 +830,6 @@ factSvg dragState fact =
                                 , dragged = futureFactInverse.dragged
                                 }
                             )
-                , maybeFactInverse = maybeFactInverse
                 , shapeListenModifier =
                     domListenToPointerDown
                         |> Web.Dom.modifierFutureMap
@@ -1305,7 +1303,6 @@ factNotBackgroundColor =
 factNotSvgWithInteractivity :
     { shapeListenModifier : Web.Dom.Modifier future
     , factInverseSvg : SizedSvg future
-    , maybeFactInverse : Maybe FactUiState
     }
     -> SizedSvg future
 factNotSvgWithInteractivity parts =
@@ -1341,27 +1338,15 @@ factNotSvgWithInteractivity parts =
                 [ domModifierFillUniform factNotBackgroundColor
                 , parts.shapeListenModifier
                 ]
-                (case parts.maybeFactInverse of
-                    Nothing ->
-                        [ ( 0, strokeWidth )
-                        , ( strokeWidth, 0 )
-                        , ( fullWidth, 0 )
-                        , ( fullWidth, fullHeight )
-                        , ( strokeWidth, fullHeight )
-                        , ( 0, fullHeight - strokeWidth )
-                        ]
-
-                    Just _ ->
-                        [ ( 0, strokeWidth )
-                        , ( strokeWidth, 0 )
-                        , ( headerWidth + strokeWidth, 0 )
-                        , ( headerWidth, strokeWidth )
-                        , ( headerWidth, fullHeight - strokeWidth )
-                        , ( headerWidth + strokeWidth, fullHeight )
-                        , ( strokeWidth, fullHeight )
-                        , ( 0, fullHeight - strokeWidth )
-                        ]
-                )
+                [ ( 0, strokeWidth )
+                , ( strokeWidth, 0 )
+                , ( headerWidth + strokeWidth, 0 )
+                , ( headerWidth, strokeWidth )
+                , ( headerWidth, fullHeight - strokeWidth )
+                , ( headerWidth + strokeWidth, fullHeight )
+                , ( strokeWidth, fullHeight )
+                , ( 0, fullHeight - strokeWidth )
+                ]
     in
     { width = fullWidth
     , height = fullHeight
