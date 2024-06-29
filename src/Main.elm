@@ -757,42 +757,42 @@ verticalFactListPolygonPoints :
     }
     -> { height : Float, width : Float, svgs : List { element_ | y : Float } }
     -> List ( Float, Float )
-verticalFactListPolygonPoints { headerWidth, headerHeight, sideWidth } elementsSvg =
+verticalFactListPolygonPoints sizes elementsSvg =
     let
         fullHeight : Float
         fullHeight =
-            headerHeight
+            sizes.headerHeight
                 + elementsSvg.height
-                + sideWidth
+                + sizes.sideWidth
 
         fullWidth : Float
         fullWidth =
-            sideWidth
-                + Basics.max elementsSvg.width headerWidth
+            sizes.sideWidth
+                + Basics.max elementsSvg.width sizes.headerWidth
     in
-    [ ( fullWidth, headerHeight )
+    [ ( fullWidth, sizes.headerHeight )
     , ( fullWidth, 0 )
-    , ( sideWidth, 0 )
+    , ( sizes.sideWidth, 0 )
     , ( 0, strokeWidth )
-    , ( 0, headerHeight + elementsSvg.height )
-    , ( sideWidth, fullHeight )
+    , ( 0, sizes.headerHeight + elementsSvg.height )
+    , ( sizes.sideWidth, fullHeight )
     , ( fullWidth, fullHeight )
-    , ( fullWidth, headerHeight + elementsSvg.height )
-    , ( sideWidth + strokeWidth, headerHeight + elementsSvg.height )
-    , ( sideWidth, headerHeight + elementsSvg.height - strokeWidth )
+    , ( fullWidth, sizes.headerHeight + elementsSvg.height )
+    , ( sizes.sideWidth + strokeWidth, sizes.headerHeight + elementsSvg.height )
+    , ( sizes.sideWidth, sizes.headerHeight + elementsSvg.height - strokeWidth )
     ]
         ++ (elementsSvg.svgs
                 |> List.drop 1
                 |> List.concatMap
                     (\branchAsSvg ->
-                        [ ( sideWidth, headerHeight + branchAsSvg.y - strokeWidth )
-                        , ( sideWidth + strokeWidth, headerHeight + branchAsSvg.y )
-                        , ( sideWidth, headerHeight + branchAsSvg.y + strokeWidth )
+                        [ ( sizes.sideWidth, sizes.headerHeight + branchAsSvg.y - strokeWidth )
+                        , ( sizes.sideWidth + strokeWidth, sizes.headerHeight + branchAsSvg.y )
+                        , ( sizes.sideWidth, sizes.headerHeight + branchAsSvg.y + strokeWidth )
                         ]
                     )
            )
-        ++ [ ( sideWidth, headerHeight + strokeWidth )
-           , ( sideWidth + strokeWidth, headerHeight )
+        ++ [ ( sizes.sideWidth, sizes.headerHeight + strokeWidth )
+           , ( sizes.sideWidth + strokeWidth, sizes.headerHeight )
            ]
 
 
