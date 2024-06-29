@@ -1776,8 +1776,6 @@ valueLookupSvgWithInteractivity interactivity valueLookup =
                                             , bottom = 0
                                             , right = fontWidth
                                             }
-                                        |> List.singleton
-                                        |> sizedSvgStack [ Web.Dom.style "font-style" "italic" ]
                                     , entryValueSvg
                                     ]
                             )
