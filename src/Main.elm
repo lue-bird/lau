@@ -48,10 +48,6 @@ type BlockUiState
     | BlockValue ValueUiState
 
 
-type alias ValueLookupUiState =
-    List { key : String, value : Maybe ValueUiState }
-
-
 type FactUiState
     = RelationUse { identifier : String, argument : Maybe ValueUiState }
     | Equal { a : Maybe ValueUiState, b : Maybe ValueUiState }
@@ -62,7 +58,7 @@ type FactUiState
 
 type ValueUiState
     = Variable String
-    | ValueLookup ValueLookupUiState
+    | ValueLookup (FastDict.Dict String (Maybe ValueUiState))
 
 
 valueUiStateToLau : ValueUiState -> Maybe (Lau.ValueWithVariableName String)
@@ -75,10 +71,11 @@ valueUiStateToLau =
             ValueLookup entriesWithHoles ->
                 Maybe.map Lau.ValueLookup
                     (entriesWithHoles
+                        |> FastDict.toList
                         |> List.LocalExtra.allJustMap
-                            (\entry ->
-                                Maybe.map (\entryValue -> ( entry.key, entryValue ))
-                                    (entry.value |> Maybe.andThen valueUiStateToLau)
+                            (\( entryKey, maybeEntryValue ) ->
+                                Maybe.map (\entryValue -> ( entryKey, entryValue ))
+                                    (maybeEntryValue |> Maybe.andThen valueUiStateToLau)
                             )
                         |> Maybe.map FastDict.fromList
                     )
@@ -133,9 +130,9 @@ initialState =
         FastDict.singleton "main"
             { parameter =
                 ValueLookup
-                    [ { key = "state", value = Variable "state" |> Just }
-                    , { key = "interface", value = Variable "interface" |> Just }
-                    ]
+                    (FastDict.singleton "state" (Variable "state" |> Just)
+                        |> FastDict.insert "interface" (Variable "interface" |> Just)
+                    )
                     |> Just
             , equivalentFact =
                 Any
@@ -151,31 +148,27 @@ initialState =
                             { a = Variable "Interface" |> Just
                             , b =
                                 ValueLookup
-                                    [ { key = "svg render"
-                                      , value =
-                                            ValueLookup
-                                                [ { key = "circle"
-                                                  , value =
-                                                        ValueLookup
-                                                            [ { key = "radius"
-                                                              , value =
-                                                                    ValueLookup
-                                                                        [ { key = "50", value = ValueLookup [] |> Just } ]
-                                                                        |> Just
-                                                              }
-                                                            , { key = "y"
-                                                              , value =
-                                                                    ValueLookup
-                                                                        [ { key = "50", value = ValueLookup [] |> Just } ]
-                                                                        |> Just
-                                                              }
-                                                            ]
+                                    (FastDict.singleton "svg render"
+                                        (ValueLookup
+                                            (FastDict.singleton "circle"
+                                                (ValueLookup
+                                                    (FastDict.singleton "radius"
+                                                        (ValueLookup
+                                                            (FastDict.singleton "50" (ValueLookup FastDict.empty |> Just))
                                                             |> Just
-                                                  }
-                                                ]
-                                                |> Just
-                                      }
-                                    ]
+                                                        )
+                                                        |> FastDict.insert "y"
+                                                            (ValueLookup
+                                                                (FastDict.singleton "50" (ValueLookup FastDict.empty |> Just))
+                                                                |> Just
+                                                            )
+                                                    )
+                                                    |> Just
+                                                )
+                                            )
+                                            |> Just
+                                        )
+                                    )
                                     |> Just
                             }
                         ]
@@ -1706,11 +1699,11 @@ circleSvg geometry modifiers =
 
 valueLookupSvg :
     DragState
-    -> ValueLookupUiState
+    -> FastDict.Dict String (Maybe ValueUiState)
     ->
         SizedSvg
             { dragged : DragState
-            , valueLookup : Maybe ValueLookupUiState
+            , valueLookup : Maybe (FastDict.Dict String (Maybe ValueUiState))
             }
 valueLookupSvg dragState valueLookup =
     valueLookupSvgWithInteractivity
@@ -1738,51 +1731,38 @@ valueLookupSvg dragState valueLookup =
                     )
         }
         (valueLookup
-            |> List.indexedMap
-                (\entryIndex entry ->
-                    { key = entry.key
-                    , value =
-                        valueOrHoleSvg valueLookupBackgroundColor dragState entry.value
-                            |> sizedSvgFutureMap
-                                (\entryValueFuture ->
-                                    { dragged = entryValueFuture.dragged
-                                    , valueLookup =
-                                        valueLookup
-                                            |> List.LocalExtra.elementAtIndexAlter entryIndex
-                                                (\_ ->
-                                                    { key = entry.key
-                                                    , value = entryValueFuture.value
-                                                    }
-                                                )
-                                            |> Just
-                                    }
-                                )
-                    }
+            |> FastDict.map
+                (\entryKey entryValue ->
+                    valueOrHoleSvg valueLookupBackgroundColor dragState entryValue
+                        |> sizedSvgFutureMap
+                            (\entryValueFuture ->
+                                { dragged = entryValueFuture.dragged
+                                , valueLookup =
+                                    valueLookup
+                                        |> FastDict.update entryKey
+                                            (\_ -> entryValueFuture.value |> Just)
+                                        |> Just
+                                }
+                            )
                 )
         )
 
 
-valueLookupShapeSvg : ValueLookupUiState -> SizedSvg future_
+valueLookupShapeSvg : FastDict.Dict String (Maybe ValueUiState) -> SizedSvg future_
 valueLookupShapeSvg valueLookup =
     valueLookupSvgWithInteractivity
         { listenToDragStart = Web.Dom.modifierNone }
         (valueLookup
-            |> List.indexedMap
-                (\entryIndex entry ->
-                    { key = entry.key
-                    , value = valueOrHoleShapeSvg valueLookupBackgroundColor entry.value
-                    }
+            |> FastDict.map
+                (\entryKey entryValue ->
+                    valueOrHoleShapeSvg valueLookupBackgroundColor entryValue
                 )
         )
 
 
 valueLookupSvgWithInteractivity :
     { listenToDragStart : Web.Dom.Modifier future }
-    ->
-        List
-            { key : String
-            , value : SizedSvg future
-            }
+    -> FastDict.Dict String (SizedSvg future)
     -> SizedSvg future
 valueLookupSvgWithInteractivity interactivity valueLookup =
     let
@@ -1790,7 +1770,7 @@ valueLookupSvgWithInteractivity interactivity valueLookup =
         radius =
             fontSize
     in
-    case valueLookup of
+    case valueLookup |> FastDict.toList of
         [] ->
             circleSvg { radius = radius }
                 [ interactivity.listenToDragStart
@@ -1810,17 +1790,13 @@ valueLookupSvgWithInteractivity interactivity valueLookup =
                             }
                     }
                 entrySvgs =
-                    valueLookup
-                        |> List.indexedMap
-                            (\entryIndex entry ->
+                    (entry0 :: entry1Up)
+                        |> List.map
+                            (\( entryKey, entryValueSvg ) ->
                                 let
-                                    entryValueSvg : SizedSvg future
-                                    entryValueSvg =
-                                        entry.value
-
                                     entryNameSvg : SizedSvg future_
                                     entryNameSvg =
-                                        unselectableTextSvg entry.key
+                                        unselectableTextSvg entryKey
 
                                     entryFullHeight : Float
                                     entryFullHeight =
