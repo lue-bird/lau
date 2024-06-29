@@ -12,8 +12,7 @@ Reduces things you need to know and keep in your mind.
   - minimal:
     value, variable, definition, all, any, =, not. That's everything.
     No spooky things to keep in mind like mutation, pointer, unmanaged effect, runtime error,
-    no typeclass/trait/interface, no lambda, no local definition, no difference between types and code,
-    no module, no class, no package, no namespace
+    typeclass/trait/interface, module, class, namespace, package, lambda, local definition, difference between types and code
 
 ## status (TODO)
 
