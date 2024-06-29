@@ -28,7 +28,7 @@ type alias State =
             { parameter : Maybe ValueUiState
             , equivalentFact : Maybe FactUiState
             }
-    , strayThings : List { x : Float, y : Float, thing : DraggedThing }
+    , strayThings : List { x : Float, y : Float, block : BlockUiState }
     , dragged : DragState
     }
 
@@ -39,13 +39,13 @@ type alias DragState =
         , y : Float
         , offsetX : Float
         , offsetY : Float
-        , thing : DraggedThing
+        , block : BlockUiState
         }
 
 
-type DraggedThing
-    = DraggedFact FactUiState
-    | DraggedValue ValueUiState
+type BlockUiState
+    = BlockFact FactUiState
+    | BlockValue ValueUiState
 
 
 type alias ValueLookupUiState =
@@ -239,7 +239,7 @@ interface state =
                                                 , y = position.y
                                                 , offsetX = stateDragged.offsetX
                                                 , offsetY = stateDragged.offsetY
-                                                , thing = stateDragged.thing
+                                                , block = stateDragged.block
                                                 }
                                     }
 
@@ -279,7 +279,7 @@ interface state =
                                                 |> (::)
                                                     { x = dragged.x + dragged.offsetX
                                                     , y = dragged.y + dragged.offsetY
-                                                    , thing = dragged.thing
+                                                    , block = dragged.block
                                                     }
                                     }
                                 )
@@ -328,26 +328,26 @@ interface state =
                 |> List.indexedMap
                     (\strayThingIndex strayThing ->
                         let
-                            strayThingSvg : Web.Dom.Node { dragged : DragState, thing : Maybe DraggedThing }
+                            strayThingSvg : Web.Dom.Node { dragged : DragState, block : Maybe BlockUiState }
                             strayThingSvg =
-                                case strayThing.thing of
-                                    DraggedValue droppedValue ->
+                                case strayThing.block of
+                                    BlockValue droppedValue ->
                                         valueSvg state.dragged droppedValue
                                             |> .svg
                                             |> Web.Dom.futureMap
                                                 (\future ->
                                                     { dragged = future.dragged
-                                                    , thing = Maybe.map DraggedValue future.value
+                                                    , block = Maybe.map BlockValue future.value
                                                     }
                                                 )
 
-                                    DraggedFact fact ->
+                                    BlockFact fact ->
                                         factSvg state.dragged fact
                                             |> .svg
                                             |> Web.Dom.futureMap
                                                 (\future ->
                                                     { dragged = future.dragged
-                                                    , thing = Maybe.map DraggedFact future.fact
+                                                    , block = Maybe.map BlockFact future.fact
                                                     }
                                                 )
                         in
@@ -357,7 +357,7 @@ interface state =
                                     { state
                                         | dragged = future.dragged
                                         , strayThings =
-                                            case future.thing of
+                                            case future.block of
                                                 Nothing ->
                                                     state.strayThings
                                                         |> List.LocalExtra.removeElementAtIndex strayThingIndex
@@ -365,7 +365,7 @@ interface state =
                                                 Just futureThing ->
                                                     state.strayThings
                                                         |> List.LocalExtra.elementAtIndexAlter strayThingIndex
-                                                            (\stray -> { stray | thing = futureThing })
+                                                            (\stray -> { stray | block = futureThing })
                                     }
                                 )
                             |> List.singleton
@@ -389,11 +389,11 @@ interface state =
                             }
                         , Web.Dom.style "pointer-events" "none"
                         ]
-                        [ case dragged.thing of
-                            DraggedValue value ->
+                        [ case dragged.block of
+                            BlockValue value ->
                                 valueShapeSvg value |> .svg
 
-                            DraggedFact draggedFact ->
+                            BlockFact draggedFact ->
                                 draggedFact |> factShapeSvg |> .svg
                         ]
             ]
@@ -854,7 +854,7 @@ factSvg dragState fact =
                                                 , y = pointer.y
                                                 , offsetX = -fontSize
                                                 , offsetY = -fontSize
-                                                , thing = DraggedFact (Not maybeFactInverse)
+                                                , block = BlockFact (Not maybeFactInverse)
                                                 }
                                         , fact = Nothing
                                         }
@@ -894,7 +894,7 @@ factSvg dragState fact =
                                                 , y = pointer.y
                                                 , offsetX = -fontSize
                                                 , offsetY = -fontSize
-                                                , thing = DraggedFact (Equal toEquate)
+                                                , block = BlockFact (Equal toEquate)
                                                 }
                                         , fact = Nothing
                                         }
@@ -920,7 +920,7 @@ factSvg dragState fact =
                                                 , y = pointer.y
                                                 , offsetX = -fontSize
                                                 , offsetY = -fontSize
-                                                , thing = DraggedFact (RelationUse relationUse)
+                                                , block = BlockFact (RelationUse relationUse)
                                                 }
                                         , fact = Nothing
                                         }
@@ -1038,11 +1038,11 @@ blockVerticalFactListSvg config =
                             []
 
                         Just dragged ->
-                            case dragged.thing of
-                                DraggedValue _ ->
+                            case dragged.block of
+                                BlockValue _ ->
                                     []
 
-                                DraggedFact _ ->
+                                BlockFact _ ->
                                     List.range 0 ((element0 :: element1Up) |> List.length)
                                         |> List.map
                                             (\insertIndex ->
@@ -1113,7 +1113,7 @@ blockVerticalFactListSvg config =
                                             , y = pointer.y
                                             , offsetX = -fontSize
                                             , offsetY = -fontSize
-                                            , thing = DraggedFact config.fact
+                                            , block = BlockFact config.fact
                                             }
                                     , elements = Nothing
                                     }
@@ -1396,11 +1396,11 @@ factInsertHoleSvg backgroundColor dragState =
                     Web.Dom.modifierNone
 
                 Just dragged ->
-                    case dragged.thing of
-                        DraggedValue _ ->
+                    case dragged.block of
+                        BlockValue _ ->
                             Web.Dom.modifierNone
 
-                        DraggedFact draggedFact ->
+                        BlockFact draggedFact ->
                             Web.Dom.listenTo "pointerup"
                                 |> Web.Dom.modifierFutureMap
                                     (\_ -> draggedFact)
@@ -1731,7 +1731,7 @@ valueLookupSvg dragState valueLookup =
                                         , y = pointer.y
                                         , offsetX = -fontSize
                                         , offsetY = -fontSize
-                                        , thing = DraggedValue (ValueLookup valueLookup)
+                                        , block = BlockValue (ValueLookup valueLookup)
                                         }
                                 , valueLookup = Nothing
                                 }
@@ -2012,7 +2012,7 @@ variableSvg dragState variableName =
                                         , y = pointer.y
                                         , offsetX = -fontSize
                                         , offsetY = -fontSize
-                                        , thing = DraggedValue (Variable variableName)
+                                        , block = BlockValue (Variable variableName)
                                         }
                                 , variable = Nothing
                                 }
@@ -2108,11 +2108,11 @@ valueHoleSvg backgroundColor dragState =
                     Web.Dom.modifierNone
 
                 Just stateDragged ->
-                    case stateDragged.thing of
-                        DraggedFact _ ->
+                    case stateDragged.block of
+                        BlockFact _ ->
                             Web.Dom.modifierNone
 
-                        DraggedValue draggedValue ->
+                        BlockValue draggedValue ->
                             Web.Dom.listenTo "pointerup"
                                 |> Web.Dom.modifierFutureMap (\_ -> draggedValue)
             ]
