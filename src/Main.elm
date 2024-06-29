@@ -867,20 +867,32 @@ factSvg :
 factSvg dragState fact =
     case fact of
         All parts ->
-            factAllSvg dragState parts
+            blockVerticalFactListSvg
+                { name = "all"
+                , fact = All parts
+                , dragState = dragState
+                , elements = parts
+                , color = factAllBackgroundColor
+                }
                 |> sizedSvgFutureMap
-                    (\futureAll ->
-                        { dragged = futureAll.dragged
-                        , fact = Maybe.map All futureAll.parts
+                    (\future ->
+                        { dragged = future.dragged
+                        , fact = Maybe.map All future.elements
                         }
                     )
 
         Any branches ->
-            factAnySvg dragState branches
+            blockVerticalFactListSvg
+                { name = "any"
+                , fact = Any branches
+                , dragState = dragState
+                , elements = branches
+                , color = factAnyBackgroundColor
+                }
                 |> sizedSvgFutureMap
-                    (\futureAny ->
-                        { dragged = futureAny.dragged
-                        , fact = Maybe.map Any futureAny.branches
+                    (\future ->
+                        { dragged = future.dragged
+                        , fact = Maybe.map Any future.elements
                         }
                     )
 
@@ -1027,26 +1039,6 @@ factAllShapeSvg parts =
 factAllBackgroundColor : Color
 factAllBackgroundColor =
     Color.rgb 0.01 0.14 0
-
-
-factAllSvg :
-    DragState
-    -> List FactUiState
-    -> SizedSvg { dragged : DragState, parts : Maybe (List FactUiState) }
-factAllSvg dragState parts =
-    blockVerticalFactListSvg
-        { name = "all"
-        , fact = All parts
-        , dragState = dragState
-        , elements = parts
-        , color = factAllBackgroundColor
-        }
-        |> sizedSvgFutureMap
-            (\future ->
-                { dragged = future.dragged
-                , parts = future.elements
-                }
-            )
 
 
 blockVerticalFactListSvg :
@@ -1293,26 +1285,6 @@ blockVerticalFactListShapeSvg config =
                 [ elementsSvg.svg ]
             ]
     }
-
-
-factAnySvg :
-    DragState
-    -> List FactUiState
-    -> SizedSvg { dragged : DragState, branches : Maybe (List FactUiState) }
-factAnySvg dragState branches =
-    blockVerticalFactListSvg
-        { name = "any"
-        , fact = Any branches
-        , dragState = dragState
-        , elements = branches
-        , color = factAnyBackgroundColor
-        }
-        |> sizedSvgFutureMap
-            (\future ->
-                { dragged = future.dragged
-                , branches = future.elements
-                }
-            )
 
 
 factNotBackgroundColor : Color
@@ -1626,35 +1598,75 @@ valueSvg dragState =
     \value ->
         case value of
             Variable variableName ->
-                variableName
-                    |> variableSvg dragState
-                    |> sizedSvgFutureMap
-                        (\future ->
-                            { dragged = future.dragged
-                            , value =
-                                case future.variable of
-                                    Nothing ->
-                                        Nothing
+                variableShapeSvg variableName
+                    |> List.singleton
+                    |> sizedSvgStack
+                        [ domListenToPointerDown
+                            |> Web.Dom.modifierFutureMap
+                                (\pointerDownEventPosition ->
+                                    case pointerDownEventPosition of
+                                        Err _ ->
+                                            { dragged = dragState
+                                            , value = Just (Variable variableName)
+                                            }
 
-                                    Just futureVariableName ->
-                                        Just (Variable futureVariableName)
-                            }
-                        )
+                                        Ok pointer ->
+                                            { dragged =
+                                                Just
+                                                    { x = pointer.x
+                                                    , y = pointer.y
+                                                    , offsetX = -strokeWidth
+                                                    , offsetY = -strokeWidth
+                                                    , block = BlockValue (Variable variableName)
+                                                    }
+                                            , value = Nothing
+                                            }
+                                )
+                        ]
 
             ValueLookup valueLookup ->
-                valueLookupSvg dragState valueLookup
-                    |> sizedSvgFutureMap
-                        (\future ->
-                            { dragged = future.dragged
-                            , value =
-                                case future.valueLookup of
-                                    Nothing ->
-                                        Nothing
+                valueLookupSvgWithInteractivity
+                    { listenToDragStart =
+                        domListenToPointerDown
+                            |> Web.Dom.modifierFutureMap
+                                (\pointerDownEventPosition ->
+                                    case pointerDownEventPosition of
+                                        Err _ ->
+                                            { dragged = dragState
+                                            , value = Just (ValueLookup valueLookup)
+                                            }
 
-                                    Just futureValueLookup ->
-                                        Just (ValueLookup futureValueLookup)
-                            }
-                        )
+                                        Ok pointer ->
+                                            { dragged =
+                                                Just
+                                                    { x = pointer.x
+                                                    , y = pointer.y
+                                                    , offsetX = -strokeWidth
+                                                    , offsetY = -strokeWidth
+                                                    , block = BlockValue (ValueLookup valueLookup)
+                                                    }
+                                            , value = Nothing
+                                            }
+                                )
+                    }
+                    (valueLookup
+                        |> FastDict.map
+                            (\entryKey entryValue ->
+                                valueOrHoleSvg valueLookupBackgroundColor dragState entryValue
+                                    |> sizedSvgFutureMap
+                                        (\entryValueFuture ->
+                                            { dragged = entryValueFuture.dragged
+                                            , value =
+                                                ValueLookup
+                                                    (valueLookup
+                                                        |> FastDict.update entryKey
+                                                            (\_ -> entryValueFuture.value |> Just)
+                                                    )
+                                                    |> Just
+                                            }
+                                        )
+                            )
+                    )
 
 
 valueLookupBackgroundColor : Color
@@ -1673,57 +1685,6 @@ circleSvg geometry modifiers =
             )
             []
     }
-
-
-valueLookupSvg :
-    DragState
-    -> FastDict.Dict String (Maybe ValueUiState)
-    ->
-        SizedSvg
-            { dragged : DragState
-            , valueLookup : Maybe (FastDict.Dict String (Maybe ValueUiState))
-            }
-valueLookupSvg dragState valueLookup =
-    valueLookupSvgWithInteractivity
-        { listenToDragStart =
-            domListenToPointerDown
-                |> Web.Dom.modifierFutureMap
-                    (\pointerDownEventPosition ->
-                        case pointerDownEventPosition of
-                            Err _ ->
-                                { dragged = dragState
-                                , valueLookup = Just valueLookup
-                                }
-
-                            Ok pointer ->
-                                { dragged =
-                                    Just
-                                        { x = pointer.x
-                                        , y = pointer.y
-                                        , offsetX = -strokeWidth
-                                        , offsetY = -strokeWidth
-                                        , block = BlockValue (ValueLookup valueLookup)
-                                        }
-                                , valueLookup = Nothing
-                                }
-                    )
-        }
-        (valueLookup
-            |> FastDict.map
-                (\entryKey entryValue ->
-                    valueOrHoleSvg valueLookupBackgroundColor dragState entryValue
-                        |> sizedSvgFutureMap
-                            (\entryValueFuture ->
-                                { dragged = entryValueFuture.dragged
-                                , valueLookup =
-                                    valueLookup
-                                        |> FastDict.update entryKey
-                                            (\_ -> entryValueFuture.value |> Just)
-                                        |> Just
-                                }
-                            )
-                )
-        )
 
 
 valueLookupShapeSvg : FastDict.Dict String (Maybe ValueUiState) -> SizedSvg future_
@@ -1889,43 +1850,6 @@ domListenToPointerDown =
                         }
                             |> Ok
             )
-
-
-variableSvg : DragState -> (String -> SizedSvg { dragged : DragState, variable : Maybe String })
-variableSvg dragState variableName =
-    let
-        shape : SizedSvg future_
-        shape =
-            variableShapeSvg variableName
-    in
-    { width = shape.width
-    , height = shape.height
-    , svg =
-        svgStack
-            [ domListenToPointerDown
-                |> Web.Dom.modifierFutureMap
-                    (\pointerDownEventPosition ->
-                        case pointerDownEventPosition of
-                            Err _ ->
-                                { dragged = dragState
-                                , variable = Just variableName
-                                }
-
-                            Ok pointer ->
-                                { dragged =
-                                    Just
-                                        { x = pointer.x
-                                        , y = pointer.y
-                                        , offsetX = -strokeWidth
-                                        , offsetY = -strokeWidth
-                                        , block = BlockValue (Variable variableName)
-                                        }
-                                , variable = Nothing
-                                }
-                    )
-            ]
-            [ shape.svg ]
-    }
 
 
 variableBackgroundColor : Color
