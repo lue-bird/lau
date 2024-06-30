@@ -1428,8 +1428,8 @@ interface state =
         , Web.Dom.style "left" "0"
         ]
         [ let
-            sidebar : SizedSvg DragState
-            sidebar =
+            sidebarBlocks : SizedSvg DragState
+            sidebarBlocks =
                 verticalSvg
                     [ valueLookupShapeSvg FastDict.empty
                         |> List.singleton
@@ -1698,52 +1698,54 @@ interface state =
                                 )
                 ]
                 []
-            , svgStack []
+            , svgStack
+                [ case state.dragged of
+                    Nothing ->
+                        Web.Dom.modifierNone
+
+                    Just _ ->
+                        Web.Dom.listenTo "pointerup"
+                            |> Web.Dom.modifierFutureMap
+                                (\_ ->
+                                    { state | dragged = Nothing }
+                                )
+                ]
                 [ Web.Svg.element "rect"
                     [ Web.Dom.attribute "width" "100%"
                     , Web.Dom.attribute "height" "100%"
                     , domModifierFillUniform (Color.rgb 0.03 0.02 0)
-                    , case state.dragged of
-                        Nothing ->
-                            Web.Dom.modifierNone
-
-                        Just _ ->
-                            Web.Dom.listenTo "pointerup"
-                                |> Web.Dom.modifierFutureMap
-                                    (\_ ->
-                                        { state | dragged = Nothing }
-                                    )
                     ]
                     []
-                , sidebar.svg
+                , sidebarBlocks.svg
                     |> Web.Dom.futureMap
                         (\dragState -> { state | dragged = dragState })
                 ]
             , svgStack
-                [ svgAttributeTranslate { x = sidebar.width, y = 0 } ]
+                [ svgAttributeTranslate { x = sidebarBlocks.width, y = 0 }
+                , case state.dragged of
+                    Nothing ->
+                        Web.Dom.modifierNone
+
+                    Just dragged ->
+                        Web.Dom.listenTo "pointerup"
+                            |> Web.Dom.modifierFutureMap
+                                (\_ ->
+                                    { state
+                                        | dragged = Nothing
+                                        , strayThings =
+                                            state.strayThings
+                                                |> (::)
+                                                    { x = dragged.x + dragged.offsetX
+                                                    , y = dragged.y + dragged.offsetY
+                                                    , block = dragged.block
+                                                    }
+                                    }
+                                )
+                ]
                 [ Web.Svg.element "rect"
                     [ Web.Dom.attribute "width" "100%"
                     , Web.Dom.attribute "height" "100%"
                     , domModifierFillUniform (Color.rgb 0 0 0)
-                    , case state.dragged of
-                        Nothing ->
-                            Web.Dom.modifierNone
-
-                        Just dragged ->
-                            Web.Dom.listenTo "pointerup"
-                                |> Web.Dom.modifierFutureMap
-                                    (\_ ->
-                                        { state
-                                            | dragged = Nothing
-                                            , strayThings =
-                                                state.strayThings
-                                                    |> (::)
-                                                        { x = dragged.x + dragged.offsetX
-                                                        , y = dragged.y + dragged.offsetY
-                                                        , block = dragged.block
-                                                        }
-                                        }
-                                    )
                     ]
                     []
                 , state.relationDefinitions
