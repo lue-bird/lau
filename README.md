@@ -19,14 +19,17 @@ Reduces things you need to know and keep in your mind.
   - language evaluation isn't working just yet
   - studio
       - scrolling
+      - fix issue where double click removes outer
+      - block while drag action: value lookup entry adding
       - block sidebar
-          - existing variables, existing relation definitions
           - variable creating
           - relation definition creating
-      - block context action
-          - value lookup entry adding
+          - value lookup entry creating
           - variable renaming
           - relation renaming
+          - value lookup entry key renaming
+          - search for relation
+      - switching relation definition
       - evaluation frame
 
 ## web

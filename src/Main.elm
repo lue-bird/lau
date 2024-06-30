@@ -21,6 +21,7 @@ import List.LocalExtra
 import Parameter1d
 import Point2d
 import Quantity
+import Set exposing (Set)
 import Svg.PathD
 import Web
 import Web.Dom
@@ -31,12 +32,17 @@ import Web.Window
 type alias State =
     { windowWidth : Int
     , windowHeight : Int
-    , relationDefinitions :
+    , relationDefinitionsNotShown :
         FastDict.Dict
             String
             { parameter : Maybe ValueUiState
             , equivalentFact : Maybe FactUiState
             }
+    , relationDefinitionShown :
+        { identifier : String
+        , parameter : Maybe ValueUiState
+        , equivalentFact : Maybe FactUiState
+        }
     , strayThings : List { x : Float, y : Float, block : BlockUiState }
     , dragged : DragState
     }
@@ -68,6 +74,78 @@ type FactUiState
 type ValueUiState
     = Variable String
     | ValueLookup (FastDict.Dict String (Maybe ValueUiState))
+
+
+relationDefinitionVariables :
+    { identifier : String
+    , parameter : Maybe ValueUiState
+    , equivalentFact : Maybe FactUiState
+    }
+    -> Set String
+relationDefinitionVariables =
+    \relationDefinition ->
+        Set.union (relationDefinition.equivalentFact |> maybeFactVariables)
+            (relationDefinition.parameter |> maybeValueVariables)
+
+
+factVariables : FactUiState -> Set String
+factVariables =
+    \factUiState ->
+        case factUiState of
+            Not maybeFactInverse ->
+                maybeFactInverse |> maybeFactVariables
+
+            Equal values ->
+                Set.union
+                    (values.a |> maybeValueVariables)
+                    (values.b |> maybeValueVariables)
+
+            Any branches ->
+                branches |> List.LocalExtra.setFlatMap factVariables
+
+            All parts ->
+                parts |> List.LocalExtra.setFlatMap factVariables
+
+            RelationUse relationUse ->
+                relationUse.argument |> maybeValueVariables
+
+
+maybeFactVariables : Maybe FactUiState -> Set String
+maybeFactVariables =
+    \maybeFactUiState ->
+        case maybeFactUiState of
+            Nothing ->
+                Set.empty
+
+            Just factUiState ->
+                factUiState |> factVariables
+
+
+maybeValueVariables : Maybe ValueUiState -> Set String
+maybeValueVariables =
+    \maybeValueUiState ->
+        case maybeValueUiState of
+            Nothing ->
+                Set.empty
+
+            Just valueUiState ->
+                valueUiState |> valueVariables
+
+
+valueVariables : ValueUiState -> Set String
+valueVariables =
+    \value ->
+        case value of
+            Variable variableName ->
+                variableName |> Set.singleton
+
+            ValueLookup valueLookup ->
+                valueLookup
+                    |> FastDict.foldl
+                        (\_ entryValue soFar ->
+                            Set.union soFar (entryValue |> maybeValueVariables)
+                        )
+                        Set.empty
 
 
 factUiStateToLau : FactUiState -> Maybe Lau.Fact
@@ -135,65 +213,66 @@ initialState =
     { windowWidth = 1920
     , windowHeight = 1080
     , dragged = Nothing
-    , relationDefinitions =
-        FastDict.singleton "main"
-            { parameter =
-                ValueLookup
-                    (FastDict.singleton "state" (Variable "state" |> Just)
-                        |> FastDict.insert "interface" (Variable "interface" |> Just)
-                    )
-                    |> Just
-            , equivalentFact =
-                Any
-                    [ All
-                        [ Not
-                            (RelationUse
-                                { identifier = "is greater or equal to 0"
-                                , argument = Variable "state" |> Just
-                                }
-                                |> Just
-                            )
-                        , Equal
-                            { a = Variable "interface" |> Just
-                            , b =
-                                ValueLookup
-                                    (FastDict.singleton "svg render"
-                                        (ValueLookup
-                                            (FastDict.singleton "circle"
-                                                (ValueLookup
-                                                    (FastDict.singleton "radius"
+    , relationDefinitionsNotShown = FastDict.empty
+    , relationDefinitionShown =
+        { identifier = "main"
+        , parameter =
+            ValueLookup
+                (FastDict.singleton "state" (Variable "state" |> Just)
+                    |> FastDict.insert "interface" (Variable "interface" |> Just)
+                )
+                |> Just
+        , equivalentFact =
+            Any
+                [ All
+                    [ Not
+                        (RelationUse
+                            { identifier = "is greater or equal to 0"
+                            , argument = Variable "state" |> Just
+                            }
+                            |> Just
+                        )
+                    , Equal
+                        { a = Variable "interface" |> Just
+                        , b =
+                            ValueLookup
+                                (FastDict.singleton "svg render"
+                                    (ValueLookup
+                                        (FastDict.singleton "circle"
+                                            (ValueLookup
+                                                (FastDict.singleton "radius"
+                                                    (ValueLookup
+                                                        (FastDict.singleton "50" (ValueLookup FastDict.empty |> Just))
+                                                        |> Just
+                                                    )
+                                                    |> FastDict.insert "y"
                                                         (ValueLookup
                                                             (FastDict.singleton "50" (ValueLookup FastDict.empty |> Just))
                                                             |> Just
                                                         )
-                                                        |> FastDict.insert "y"
-                                                            (ValueLookup
-                                                                (FastDict.singleton "50" (ValueLookup FastDict.empty |> Just))
-                                                                |> Just
-                                                            )
-                                                    )
-                                                    |> Just
                                                 )
+                                                |> Just
                                             )
-                                            |> Just
                                         )
+                                        |> Just
                                     )
-                                    |> Just
-                            }
-                        ]
-                    , All
-                        [ RelationUse
-                            { identifier = "is less than 10"
-                            , argument = Variable "state" |> Just
-                            }
-                        , Equal
-                            { a = Variable "interface" |> Just
-                            , b = Nothing
-                            }
-                        ]
+                                )
+                                |> Just
+                        }
                     ]
-                    |> Just
-            }
+                , All
+                    [ RelationUse
+                        { identifier = "is less than 10"
+                        , argument = Variable "state" |> Just
+                        }
+                    , Equal
+                        { a = Variable "interface" |> Just
+                        , b = Nothing
+                        }
+                    ]
+                ]
+                |> Just
+        }
     , strayThings = []
     }
 
@@ -931,10 +1010,10 @@ valueLookupBackgroundColor =
     Color.rgb 0 0.06 0.19
 
 
-verticalSvg :
+svgSizedVertical :
     List (SizedSvg future)
     -> SizedSvg future
-verticalSvg =
+svgSizedVertical =
     \elements ->
         let
             elementsAsSvgs :
@@ -1015,7 +1094,7 @@ valueLookupSvgWithInteractivity interactivity valueLookup =
                                     , entryValueSvg
                                     ]
                             )
-                        |> verticalSvg
+                        |> svgSizedVertical
 
                 shapeSvg : Web.Dom.Node future
                 shapeSvg =
@@ -1430,7 +1509,7 @@ interface state =
         [ let
             sidebarBlocks : SizedSvg DragState
             sidebarBlocks =
-                verticalSvg
+                svgSizedVertical
                     [ valueLookupShapeSvg FastDict.empty
                         |> List.singleton
                         |> sizedSvgStack
@@ -1457,26 +1536,37 @@ interface state =
                             , top = 0
                             , bottom = strokeWidth
                             }
-                    , variableShapeSvg "variable"
-                        |> List.singleton
-                        |> sizedSvgStack
-                            [ domListenToPointerDown
-                                |> Web.Dom.modifierFutureMap
-                                    (\pointerDownEventPosition ->
-                                        case pointerDownEventPosition of
-                                            Err _ ->
-                                                state.dragged
+                    , let
+                        variables : Set String
+                        variables =
+                            state.relationDefinitionShown |> relationDefinitionVariables
+                      in
+                      variables
+                        |> Set.toList
+                        |> List.map
+                            (\availableVariable ->
+                                variableShapeSvg availableVariable
+                                    |> List.singleton
+                                    |> sizedSvgStack
+                                        [ domListenToPointerDown
+                                            |> Web.Dom.modifierFutureMap
+                                                (\pointerDownEventPosition ->
+                                                    case pointerDownEventPosition of
+                                                        Err _ ->
+                                                            state.dragged
 
-                                            Ok pointer ->
-                                                Just
-                                                    { x = pointer.x
-                                                    , y = pointer.y
-                                                    , offsetX = -strokeWidth
-                                                    , offsetY = -strokeWidth
-                                                    , block = BlockValue (Variable "variable")
-                                                    }
-                                    )
-                            ]
+                                                        Ok pointer ->
+                                                            Just
+                                                                { x = pointer.x
+                                                                , y = pointer.y
+                                                                , offsetX = -strokeWidth
+                                                                , offsetY = -strokeWidth
+                                                                , block = BlockValue (Variable availableVariable)
+                                                                }
+                                                )
+                                        ]
+                            )
+                        |> svgSizedVertical
                         |> sizedSvgPad
                             { left = 0
                             , right = 0
@@ -1589,38 +1679,50 @@ interface state =
                                                     }
                                     )
                             ]
-                    , relationUseShapeSvg { identifier = "relation", argument = Nothing }
-                        |> sizedSvgPad
-                            { left = 0
-                            , right = 0
-                            , top = 0
-                            , bottom = strokeWidth
-                            }
-                        |> List.singleton
-                        |> sizedSvgStack
-                            [ domListenToPointerDown
-                                |> Web.Dom.modifierFutureMap
-                                    (\pointerDownEventPosition ->
-                                        case pointerDownEventPosition of
-                                            Err _ ->
-                                                state.dragged
+                    , let
+                        relationIdentifiers : Set String
+                        relationIdentifiers =
+                            Set.insert state.relationDefinitionShown.identifier
+                                (state.relationDefinitionsNotShown |> FastDict.keys |> Set.fromList)
+                      in
+                      relationIdentifiers
+                        |> Set.toList
+                        |> List.map
+                            (\relationIdentifier ->
+                                relationUseShapeSvg { identifier = relationIdentifier, argument = Nothing }
+                                    |> sizedSvgPad
+                                        { left = 0
+                                        , right = 0
+                                        , top = 0
+                                        , bottom = strokeWidth
+                                        }
+                                    |> List.singleton
+                                    |> sizedSvgStack
+                                        [ domListenToPointerDown
+                                            |> Web.Dom.modifierFutureMap
+                                                (\pointerDownEventPosition ->
+                                                    case pointerDownEventPosition of
+                                                        Err _ ->
+                                                            state.dragged
 
-                                            Ok pointer ->
-                                                Just
-                                                    { x = pointer.x
-                                                    , y = pointer.y
-                                                    , offsetX = -strokeWidth
-                                                    , offsetY = -strokeWidth
-                                                    , block =
-                                                        BlockFact
-                                                            (RelationUse
-                                                                { identifier = "relation"
-                                                                , argument = Nothing
+                                                        Ok pointer ->
+                                                            Just
+                                                                { x = pointer.x
+                                                                , y = pointer.y
+                                                                , offsetX = -strokeWidth
+                                                                , offsetY = -strokeWidth
+                                                                , block =
+                                                                    BlockFact
+                                                                        (RelationUse
+                                                                            { identifier = relationIdentifier
+                                                                            , argument = Nothing
+                                                                            }
+                                                                        )
                                                                 }
-                                                            )
-                                                    }
-                                    )
-                            ]
+                                                )
+                                        ]
+                            )
+                        |> svgSizedVertical
                     ]
                     |> sizedSvgPad
                         { left = strokeWidth
@@ -1748,28 +1850,17 @@ interface state =
                     , domModifierFillUniform (Color.rgb 0 0 0)
                     ]
                     []
-                , state.relationDefinitions
-                    |> FastDict.toList
-                    |> List.map
-                        (\( name, definition ) ->
-                            relationDefinitionSvg state.dragged
-                                { name = name
-                                , parameter = definition.parameter
-                                , equivalentFact = definition.equivalentFact
-                                }
-                                |> sizedSvgFutureMap
-                                    (\relationUiState ->
-                                        { state
-                                            | dragged = relationUiState.dragged
-                                            , relationDefinitions =
-                                                state.relationDefinitions
-                                                    |> FastDict.update name
-                                                        (\_ -> Just relationUiState.relationDefinition)
-                                        }
-                                    )
-                                |> sizedSvgPad { bottom = 0, top = strokeWidth * 2, left = 0, right = 0 }
+                , relationDefinitionSvg state.dragged
+                    state.relationDefinitionShown
+                    |> sizedSvgFutureMap
+                        (\relationUiState ->
+                            { state
+                                | dragged = relationUiState.dragged
+                                , relationDefinitionShown =
+                                    relationUiState.relationDefinition
+                            }
                         )
-                    |> verticalSvg
+                    |> sizedSvgPad { bottom = 0, top = strokeWidth * 2, left = 0, right = 0 }
                     |> .svg
                 ]
             , state.strayThings
@@ -1877,7 +1968,7 @@ domSvgContainer size modifiers subs =
 relationDefinitionSvg :
     DragState
     ->
-        { name : String
+        { identifier : String
         , parameter : Maybe ValueUiState
         , equivalentFact : Maybe FactUiState
         }
@@ -1885,7 +1976,8 @@ relationDefinitionSvg :
         SizedSvg
             { dragged : DragState
             , relationDefinition :
-                { parameter : Maybe ValueUiState
+                { identifier : String
+                , parameter : Maybe ValueUiState
                 , equivalentFact : Maybe FactUiState
                 }
             }
@@ -1901,7 +1993,7 @@ relationDefinitionSvg dragState definition =
 
         nameSvg : SizedSvg future_
         nameSvg =
-            unselectableTextSvg definition.name
+            unselectableTextSvg definition.identifier
 
         equalsTextSvg : SizedSvg future_
         equalsTextSvg =
@@ -1928,7 +2020,11 @@ relationDefinitionSvg dragState definition =
         headerContent :
             SizedSvg
                 { dragged : DragState
-                , relationDefinition : { equivalentFact : Maybe FactUiState, parameter : Maybe ValueUiState }
+                , relationDefinition :
+                    { identifier : String
+                    , equivalentFact : Maybe FactUiState
+                    , parameter : Maybe ValueUiState
+                    }
                 }
         headerContent =
             horizontalCenteredSvg
@@ -1944,7 +2040,8 @@ relationDefinitionSvg dragState definition =
                         (\futureArgumentUiState ->
                             { dragged = futureArgumentUiState.dragged
                             , relationDefinition =
-                                { equivalentFact = definition.equivalentFact
+                                { identifier = definition.identifier
+                                , equivalentFact = definition.equivalentFact
                                 , parameter = futureArgumentUiState.value
                                 }
                             }
@@ -2003,7 +2100,8 @@ relationDefinitionSvg dragState definition =
                         (\equivalentFactUiState ->
                             { dragged = equivalentFactUiState.dragged
                             , relationDefinition =
-                                { equivalentFact = equivalentFactUiState.fact
+                                { identifier = definition.identifier
+                                , equivalentFact = equivalentFactUiState.fact
                                 , parameter = definition.parameter
                                 }
                             }
@@ -2172,7 +2270,7 @@ blockVerticalFactListSvg config =
                             )
             in
             List.LocalExtra.interweave insertHoles elementsSvgs
-                |> verticalSvg
+                |> svgSizedVertical
 
         shapeSvg : SizedSvg { dragged : DragState, elements : Maybe (List FactUiState) }
         shapeSvg =
@@ -2261,7 +2359,7 @@ blockVerticalFactListShapeSvg config =
                     (branch0 :: branch1Up)
                         |> List.map factShapeSvg
             )
-                |> verticalSvg
+                |> svgSizedVertical
 
         blockNameTextSvg : SizedSvg future_
         blockNameTextSvg =

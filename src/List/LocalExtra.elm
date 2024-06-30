@@ -1,4 +1,17 @@
-module List.LocalExtra exposing (allJustMap, elementAtIndexAlter, firstJustMap, insertElementAtIndex, interweave, oneOfEach, removeElementAtIndex)
+module List.LocalExtra exposing (allJustMap, elementAtIndexAlter, firstJustMap, insertElementAtIndex, interweave, oneOfEach, removeElementAtIndex, setFlatMap)
+
+import Set exposing (Set)
+
+
+setFlatMap : (a -> Set comparableB) -> (List a -> Set comparableB)
+setFlatMap elementToSet =
+    \list ->
+        list
+            |> List.foldl
+                (\element soFar ->
+                    Set.union soFar (element |> elementToSet)
+                )
+                Set.empty
 
 
 interweave : List a -> List a -> List a
