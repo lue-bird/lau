@@ -211,7 +211,7 @@ factShapeSvg fact =
             factNotShapeSvg maybeFactInverse
 
         Equal toEquate ->
-            equalsShapeSvg toEquate
+            factEqualsShapeSvg toEquate
 
         RelationUse relationUse ->
             relationUseShapeSvg relationUse
@@ -637,8 +637,8 @@ factEqualsSvgWithInteractivity parts =
     }
 
 
-equalsShapeSvg : { a : Maybe ValueUiState, b : Maybe ValueUiState } -> SizedSvg future_
-equalsShapeSvg toEquate =
+factEqualsShapeSvg : { a : Maybe ValueUiState, b : Maybe ValueUiState } -> SizedSvg future_
+factEqualsShapeSvg toEquate =
     factEqualsSvgWithInteractivity
         { valueASvg = valueOrHoleShapeSvg relationBackgroundColor toEquate.a
         , valueBSvg = valueOrHoleShapeSvg relationBackgroundColor toEquate.b
@@ -1426,39 +1426,210 @@ interface state =
         , Web.Dom.style "right" "0"
         , Web.Dom.style "bottom" "0"
         , Web.Dom.style "left" "0"
-        , case state.dragged of
-            Nothing ->
-                Web.Dom.modifierNone
-
-            Just stateDragged ->
-                Web.Dom.listenTo "pointermove"
-                    |> Web.Dom.modifierFutureMap
-                        (\eventJson ->
-                            case
-                                eventJson
-                                    |> Json.Decode.decodeValue
-                                        (Json.Decode.map2 (\x y -> { x = x, y = y })
-                                            (Json.Decode.field "clientX" Json.Decode.float)
-                                            (Json.Decode.field "clientY" Json.Decode.float)
-                                        )
-                            of
-                                Ok position ->
-                                    { state
-                                        | dragged =
-                                            Just
-                                                { x = position.x
-                                                , y = position.y
-                                                , offsetX = stateDragged.offsetX
-                                                , offsetY = stateDragged.offsetY
-                                                , block = stateDragged.block
-                                                }
-                                    }
-
-                                Err _ ->
-                                    state
-                        )
         ]
-        [ domSvgContainer
+        [ let
+            sidebar : SizedSvg DragState
+            sidebar =
+                verticalSvg
+                    [ valueLookupShapeSvg FastDict.empty
+                        |> List.singleton
+                        |> sizedSvgStack
+                            [ domListenToPointerDown
+                                |> Web.Dom.modifierFutureMap
+                                    (\pointerDownEventPosition ->
+                                        case pointerDownEventPosition of
+                                            Err _ ->
+                                                state.dragged
+
+                                            Ok pointer ->
+                                                Just
+                                                    { x = pointer.x
+                                                    , y = pointer.y
+                                                    , offsetX = -strokeWidth
+                                                    , offsetY = -strokeWidth
+                                                    , block = BlockValue (ValueLookup FastDict.empty)
+                                                    }
+                                    )
+                            ]
+                        |> sizedSvgPad
+                            { left = 0
+                            , right = 0
+                            , top = 0
+                            , bottom = strokeWidth
+                            }
+                    , variableShapeSvg "variable"
+                        |> List.singleton
+                        |> sizedSvgStack
+                            [ domListenToPointerDown
+                                |> Web.Dom.modifierFutureMap
+                                    (\pointerDownEventPosition ->
+                                        case pointerDownEventPosition of
+                                            Err _ ->
+                                                state.dragged
+
+                                            Ok pointer ->
+                                                Just
+                                                    { x = pointer.x
+                                                    , y = pointer.y
+                                                    , offsetX = -strokeWidth
+                                                    , offsetY = -strokeWidth
+                                                    , block = BlockValue (Variable "variable")
+                                                    }
+                                    )
+                            ]
+                        |> sizedSvgPad
+                            { left = 0
+                            , right = 0
+                            , top = 0
+                            , bottom = strokeWidth
+                            }
+                    , relationUseShapeSvg { identifier = "relation", argument = Nothing }
+                        |> sizedSvgPad
+                            { left = 0
+                            , right = 0
+                            , top = 0
+                            , bottom = strokeWidth
+                            }
+                        |> List.singleton
+                        |> sizedSvgStack
+                            [ domListenToPointerDown
+                                |> Web.Dom.modifierFutureMap
+                                    (\pointerDownEventPosition ->
+                                        case pointerDownEventPosition of
+                                            Err _ ->
+                                                state.dragged
+
+                                            Ok pointer ->
+                                                Just
+                                                    { x = pointer.x
+                                                    , y = pointer.y
+                                                    , offsetX = -strokeWidth
+                                                    , offsetY = -strokeWidth
+                                                    , block =
+                                                        BlockFact
+                                                            (RelationUse
+                                                                { identifier = "relation"
+                                                                , argument = Nothing
+                                                                }
+                                                            )
+                                                    }
+                                    )
+                            ]
+                    , factEqualsShapeSvg { a = Nothing, b = Nothing }
+                        |> sizedSvgPad
+                            { left = 0
+                            , right = 0
+                            , top = 0
+                            , bottom = strokeWidth
+                            }
+                        |> List.singleton
+                        |> sizedSvgStack
+                            [ domListenToPointerDown
+                                |> Web.Dom.modifierFutureMap
+                                    (\pointerDownEventPosition ->
+                                        case pointerDownEventPosition of
+                                            Err _ ->
+                                                state.dragged
+
+                                            Ok pointer ->
+                                                Just
+                                                    { x = pointer.x
+                                                    , y = pointer.y
+                                                    , offsetX = -strokeWidth
+                                                    , offsetY = -strokeWidth
+                                                    , block =
+                                                        BlockFact
+                                                            (Equal { a = Nothing, b = Nothing })
+                                                    }
+                                    )
+                            ]
+                    , factNotShapeSvg Nothing
+                        |> sizedSvgPad
+                            { left = 0
+                            , right = 0
+                            , top = 0
+                            , bottom = strokeWidth
+                            }
+                        |> List.singleton
+                        |> sizedSvgStack
+                            [ domListenToPointerDown
+                                |> Web.Dom.modifierFutureMap
+                                    (\pointerDownEventPosition ->
+                                        case pointerDownEventPosition of
+                                            Err _ ->
+                                                state.dragged
+
+                                            Ok pointer ->
+                                                Just
+                                                    { x = pointer.x
+                                                    , y = pointer.y
+                                                    , offsetX = -strokeWidth
+                                                    , offsetY = -strokeWidth
+                                                    , block = BlockFact (Not Nothing)
+                                                    }
+                                    )
+                            ]
+                    , factAllShapeSvg []
+                        |> sizedSvgPad
+                            { left = 0
+                            , right = 0
+                            , top = 0
+                            , bottom = strokeWidth
+                            }
+                        |> List.singleton
+                        |> sizedSvgStack
+                            [ domListenToPointerDown
+                                |> Web.Dom.modifierFutureMap
+                                    (\pointerDownEventPosition ->
+                                        case pointerDownEventPosition of
+                                            Err _ ->
+                                                state.dragged
+
+                                            Ok pointer ->
+                                                Just
+                                                    { x = pointer.x
+                                                    , y = pointer.y
+                                                    , offsetX = -strokeWidth
+                                                    , offsetY = -strokeWidth
+                                                    , block = BlockFact (All [])
+                                                    }
+                                    )
+                            ]
+                    , factAnyShapeSvg []
+                        |> sizedSvgPad
+                            { left = 0
+                            , right = 0
+                            , top = 0
+                            , bottom = strokeWidth
+                            }
+                        |> List.singleton
+                        |> sizedSvgStack
+                            [ domListenToPointerDown
+                                |> Web.Dom.modifierFutureMap
+                                    (\pointerDownEventPosition ->
+                                        case pointerDownEventPosition of
+                                            Err _ ->
+                                                state.dragged
+
+                                            Ok pointer ->
+                                                Just
+                                                    { x = pointer.x
+                                                    , y = pointer.y
+                                                    , offsetX = -strokeWidth
+                                                    , offsetY = -strokeWidth
+                                                    , block = BlockFact (Any [])
+                                                    }
+                                    )
+                            ]
+                    ]
+                    |> sizedSvgPad
+                        { left = strokeWidth
+                        , right = strokeWidth
+                        , top = strokeWidth * 2
+                        , bottom = 0
+                        }
+          in
+          domSvgContainer
             { left = 0
             , top = 0
             , bottom = state.windowWidth
@@ -1470,6 +1641,37 @@ interface state =
             , Web.Dom.style "margin" "auto"
             , Web.Dom.style "font-family" "monospace"
             , Web.Dom.style "font-size" (fontSize |> String.fromFloat)
+            , case state.dragged of
+                Nothing ->
+                    Web.Dom.modifierNone
+
+                Just stateDragged ->
+                    Web.Dom.listenTo "pointermove"
+                        |> Web.Dom.modifierFutureMap
+                            (\eventJson ->
+                                case
+                                    eventJson
+                                        |> Json.Decode.decodeValue
+                                            (Json.Decode.map2 (\x y -> { x = x, y = y })
+                                                (Json.Decode.field "clientX" Json.Decode.float)
+                                                (Json.Decode.field "clientY" Json.Decode.float)
+                                            )
+                                of
+                                    Ok position ->
+                                        { state
+                                            | dragged =
+                                                Just
+                                                    { x = position.x
+                                                    , y = position.y
+                                                    , offsetX = stateDragged.offsetX
+                                                    , offsetY = stateDragged.offsetY
+                                                    , block = stateDragged.block
+                                                    }
+                                        }
+
+                                    Err _ ->
+                                        state
+                            )
             ]
             [ Web.Svg.element "rect"
                 [ Web.Dom.attribute "width" "100%"
@@ -1496,32 +1698,78 @@ interface state =
                                 )
                 ]
                 []
-            , state.relationDefinitions
-                |> FastDict.toList
-                |> List.map
-                    (\( name, definition ) ->
-                        relationDefinitionSvg state.dragged
-                            { name = name
-                            , parameter = definition.parameter
-                            , equivalentFact = definition.equivalentFact
-                            }
-                            |> sizedSvgFutureMap
-                                (\relationUiState ->
-                                    { state
-                                        | dragged = relationUiState.dragged
-                                        , relationDefinitions =
-                                            state.relationDefinitions
-                                                |> FastDict.update name
-                                                    (\_ -> Just relationUiState.relationDefinition)
-                                    }
-                                )
-                            |> sizedSvgPad { bottom = 50, top = 0, left = 0, right = 0 }
-                    )
-                |> verticalSvg
-                |> .svg
-                |> List.singleton
-                |> svgStack
-                    [ svgAttributeTranslate { x = 140, y = 140 } ]
+            , svgStack []
+                [ Web.Svg.element "rect"
+                    [ Web.Dom.attribute "width" "100%"
+                    , Web.Dom.attribute "height" "100%"
+                    , domModifierFillUniform (Color.rgb 0.03 0.02 0)
+                    , case state.dragged of
+                        Nothing ->
+                            Web.Dom.modifierNone
+
+                        Just _ ->
+                            Web.Dom.listenTo "pointerup"
+                                |> Web.Dom.modifierFutureMap
+                                    (\_ ->
+                                        { state | dragged = Nothing }
+                                    )
+                    ]
+                    []
+                , sidebar.svg
+                    |> Web.Dom.futureMap
+                        (\dragState -> { state | dragged = dragState })
+                ]
+            , svgStack
+                [ svgAttributeTranslate { x = sidebar.width, y = 0 } ]
+                [ Web.Svg.element "rect"
+                    [ Web.Dom.attribute "width" "100%"
+                    , Web.Dom.attribute "height" "100%"
+                    , domModifierFillUniform (Color.rgb 0 0 0)
+                    , case state.dragged of
+                        Nothing ->
+                            Web.Dom.modifierNone
+
+                        Just dragged ->
+                            Web.Dom.listenTo "pointerup"
+                                |> Web.Dom.modifierFutureMap
+                                    (\_ ->
+                                        { state
+                                            | dragged = Nothing
+                                            , strayThings =
+                                                state.strayThings
+                                                    |> (::)
+                                                        { x = dragged.x + dragged.offsetX
+                                                        , y = dragged.y + dragged.offsetY
+                                                        , block = dragged.block
+                                                        }
+                                        }
+                                    )
+                    ]
+                    []
+                , state.relationDefinitions
+                    |> FastDict.toList
+                    |> List.map
+                        (\( name, definition ) ->
+                            relationDefinitionSvg state.dragged
+                                { name = name
+                                , parameter = definition.parameter
+                                , equivalentFact = definition.equivalentFact
+                                }
+                                |> sizedSvgFutureMap
+                                    (\relationUiState ->
+                                        { state
+                                            | dragged = relationUiState.dragged
+                                            , relationDefinitions =
+                                                state.relationDefinitions
+                                                    |> FastDict.update name
+                                                        (\_ -> Just relationUiState.relationDefinition)
+                                        }
+                                    )
+                                |> sizedSvgPad { bottom = 0, top = strokeWidth * 2, left = 0, right = 0 }
+                        )
+                    |> verticalSvg
+                    |> .svg
+                ]
             , state.strayThings
                 |> List.indexedMap
                     (\strayThingIndex strayThing ->

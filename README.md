@@ -18,15 +18,12 @@ Reduces things you need to know and keep in your mind.
 
   - language evaluation isn't working just yet
   - studio
+      - scrolling
       - block sidebar
-          - fact blocks, empty value lookup
+          - existing variables, existing relation definitions
           - variable creating
           - relation definition creating
-          - existing variables, existing relation definitions
       - block context action
-          - fact/variable/value lookup deleting
-          - value lookup entry deleting
-          - relation definition deleting
           - value lookup entry adding
           - variable renaming
           - relation renaming
