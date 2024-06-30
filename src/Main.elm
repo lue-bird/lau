@@ -582,11 +582,11 @@ factEqualsSvgWithInteractivity parts =
     let
         fullWidth : Float
         fullWidth =
-            strokeWidth + contentSvg.width + strokeWidth
+            strokeWidth + contentSvg.width + strokeWidth / 2
 
         spaceWidth : Float
         spaceWidth =
-            fontWidth / 2
+            fontWidth
 
         equalsTextSvg : SizedSvg future_
         equalsTextSvg =
@@ -677,7 +677,7 @@ relationUseSvgWithInteractivity parts =
 
         fullWidth : Float
         fullWidth =
-            strokeWidth + contentSvg.width + strokeWidth
+            strokeWidth + contentSvg.width + strokeWidth / 2
 
         shapeSvg : SizedSvg future
         shapeSvg =
@@ -875,7 +875,7 @@ factNotSvgWithInteractivity parts =
     let
         headerWidth : Float
         headerWidth =
-            strokeWidth + notTextSvg.width + strokeWidth
+            strokeWidth + notTextSvg.width + strokeWidth / 2
 
         fullWidth : Float
         fullWidth =
@@ -1483,66 +1483,6 @@ interface state =
                             , top = 0
                             , bottom = strokeWidth
                             }
-                    , relationUseShapeSvg { identifier = "relation", argument = Nothing }
-                        |> sizedSvgPad
-                            { left = 0
-                            , right = 0
-                            , top = 0
-                            , bottom = strokeWidth
-                            }
-                        |> List.singleton
-                        |> sizedSvgStack
-                            [ domListenToPointerDown
-                                |> Web.Dom.modifierFutureMap
-                                    (\pointerDownEventPosition ->
-                                        case pointerDownEventPosition of
-                                            Err _ ->
-                                                state.dragged
-
-                                            Ok pointer ->
-                                                Just
-                                                    { x = pointer.x
-                                                    , y = pointer.y
-                                                    , offsetX = -strokeWidth
-                                                    , offsetY = -strokeWidth
-                                                    , block =
-                                                        BlockFact
-                                                            (RelationUse
-                                                                { identifier = "relation"
-                                                                , argument = Nothing
-                                                                }
-                                                            )
-                                                    }
-                                    )
-                            ]
-                    , factEqualsShapeSvg { a = Nothing, b = Nothing }
-                        |> sizedSvgPad
-                            { left = 0
-                            , right = 0
-                            , top = 0
-                            , bottom = strokeWidth
-                            }
-                        |> List.singleton
-                        |> sizedSvgStack
-                            [ domListenToPointerDown
-                                |> Web.Dom.modifierFutureMap
-                                    (\pointerDownEventPosition ->
-                                        case pointerDownEventPosition of
-                                            Err _ ->
-                                                state.dragged
-
-                                            Ok pointer ->
-                                                Just
-                                                    { x = pointer.x
-                                                    , y = pointer.y
-                                                    , offsetX = -strokeWidth
-                                                    , offsetY = -strokeWidth
-                                                    , block =
-                                                        BlockFact
-                                                            (Equal { a = Nothing, b = Nothing })
-                                                    }
-                                    )
-                            ]
                     , factNotShapeSvg Nothing
                         |> sizedSvgPad
                             { left = 0
@@ -1618,6 +1558,66 @@ interface state =
                                                     , offsetX = -strokeWidth
                                                     , offsetY = -strokeWidth
                                                     , block = BlockFact (Any [])
+                                                    }
+                                    )
+                            ]
+                    , factEqualsShapeSvg { a = Nothing, b = Nothing }
+                        |> sizedSvgPad
+                            { left = 0
+                            , right = 0
+                            , top = 0
+                            , bottom = strokeWidth
+                            }
+                        |> List.singleton
+                        |> sizedSvgStack
+                            [ domListenToPointerDown
+                                |> Web.Dom.modifierFutureMap
+                                    (\pointerDownEventPosition ->
+                                        case pointerDownEventPosition of
+                                            Err _ ->
+                                                state.dragged
+
+                                            Ok pointer ->
+                                                Just
+                                                    { x = pointer.x
+                                                    , y = pointer.y
+                                                    , offsetX = -strokeWidth
+                                                    , offsetY = -strokeWidth
+                                                    , block =
+                                                        BlockFact
+                                                            (Equal { a = Nothing, b = Nothing })
+                                                    }
+                                    )
+                            ]
+                    , relationUseShapeSvg { identifier = "relation", argument = Nothing }
+                        |> sizedSvgPad
+                            { left = 0
+                            , right = 0
+                            , top = 0
+                            , bottom = strokeWidth
+                            }
+                        |> List.singleton
+                        |> sizedSvgStack
+                            [ domListenToPointerDown
+                                |> Web.Dom.modifierFutureMap
+                                    (\pointerDownEventPosition ->
+                                        case pointerDownEventPosition of
+                                            Err _ ->
+                                                state.dragged
+
+                                            Ok pointer ->
+                                                Just
+                                                    { x = pointer.x
+                                                    , y = pointer.y
+                                                    , offsetX = -strokeWidth
+                                                    , offsetY = -strokeWidth
+                                                    , block =
+                                                        BlockFact
+                                                            (RelationUse
+                                                                { identifier = "relation"
+                                                                , argument = Nothing
+                                                                }
+                                                            )
                                                     }
                                     )
                             ]
