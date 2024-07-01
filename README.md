@@ -20,8 +20,8 @@ Reduces things you need to know and keep in your mind.
   - studio
       - scrolling
       - fix issue where double click removes outer
-      - block while drag action: value lookup entry adding
       - block sidebar
+          - list of entry blocks using existing entry keys in the project
           - variable creating
           - relation definition creating
           - value lookup entry creating
@@ -59,10 +59,10 @@ npx vite
 
 ## considering (so might never be part of the language)
 
-  - you don't need to worry about caching and many other optimizations due to laziness
   - uis written in lau where interacting with the outside world is simple and safe which you can even embed in lau code itself
+  - you don't need to worry about caching and many other optimizations due to laziness
   - identification not by name internally (so that switching languages is easier, renaming is not a breaking change and names can overlap)
   - a story for exhaustive case handling (current workaround with giving value lookup might be a bit rough?)
-  - value lookup entry moving
+  - convenient full value lookup dragging
   - other shapes of values (multi-set, so untagged entries) to allow for nicer syntax when argument order doesn't matter e.g. with sum, product, min, max, equals, union, intersection etc.
 
