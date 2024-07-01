@@ -1141,7 +1141,7 @@ circleSvg geometry modifiers =
     }
 
 
-domListenToPointerDown : Web.Dom.Modifier (Result Json.Decode.Error { x : Float, y : Float })
+domListenToPointerDown : Web.Dom.Modifier { x : Float, y : Float }
 domListenToPointerDown =
     Web.Dom.listenTo "pointerdown"
         |> Web.Dom.modifierFutureMap
@@ -1155,14 +1155,13 @@ domListenToPointerDown =
                                 (Json.Decode.field "clientY" Json.Decode.float)
                             )
                 of
-                    Err jsonDecodeError ->
-                        Err jsonDecodeError
+                    Err _ ->
+                        { x = 0, y = 0 }
 
                     Ok pointer ->
                         { x = pointer.x
                         , y = pointer.y
                         }
-                            |> Ok
             )
 
 
@@ -1229,24 +1228,17 @@ valueSvg dragState =
                     |> sizedSvgStack
                         [ domListenToPointerDown
                             |> Web.Dom.modifierFutureMap
-                                (\pointerDownEventPosition ->
-                                    case pointerDownEventPosition of
-                                        Err _ ->
-                                            { dragged = dragState
-                                            , value = Just (Variable variableName)
+                                (\pointer ->
+                                    { dragged =
+                                        Just
+                                            { x = pointer.x
+                                            , y = pointer.y
+                                            , offsetX = -strokeWidth
+                                            , offsetY = -strokeWidth
+                                            , block = BlockValue (Variable variableName)
                                             }
-
-                                        Ok pointer ->
-                                            { dragged =
-                                                Just
-                                                    { x = pointer.x
-                                                    , y = pointer.y
-                                                    , offsetX = -strokeWidth
-                                                    , offsetY = -strokeWidth
-                                                    , block = BlockValue (Variable variableName)
-                                                    }
-                                            , value = Nothing
-                                            }
+                                    , value = Nothing
+                                    }
                                 )
                         ]
 
@@ -1255,24 +1247,17 @@ valueSvg dragState =
                     { listenToDragStart =
                         domListenToPointerDown
                             |> Web.Dom.modifierFutureMap
-                                (\pointerDownEventPosition ->
-                                    case pointerDownEventPosition of
-                                        Err _ ->
-                                            { dragged = dragState
-                                            , value = Just (ValueLookup valueLookup)
+                                (\pointer ->
+                                    { dragged =
+                                        Just
+                                            { x = pointer.x
+                                            , y = pointer.y
+                                            , offsetX = -strokeWidth
+                                            , offsetY = -strokeWidth
+                                            , block = BlockValue (ValueLookup valueLookup)
                                             }
-
-                                        Ok pointer ->
-                                            { dragged =
-                                                Just
-                                                    { x = pointer.x
-                                                    , y = pointer.y
-                                                    , offsetX = -strokeWidth
-                                                    , offsetY = -strokeWidth
-                                                    , block = BlockValue (ValueLookup valueLookup)
-                                                    }
-                                            , value = Nothing
-                                            }
+                                    , value = Nothing
+                                    }
                                 )
                     }
                     (valueLookup
@@ -1358,22 +1343,17 @@ factSvg dragState fact =
                 , shapeListenModifier =
                     domListenToPointerDown
                         |> Web.Dom.modifierFutureMap
-                            (\pointerDownEventPosition ->
-                                case pointerDownEventPosition of
-                                    Err _ ->
-                                        { dragged = dragState, fact = Just (Not maybeFactInverse) }
-
-                                    Ok pointer ->
-                                        { dragged =
-                                            Just
-                                                { x = pointer.x
-                                                , y = pointer.y
-                                                , offsetX = -strokeWidth
-                                                , offsetY = -strokeWidth
-                                                , block = BlockFact (Not maybeFactInverse)
-                                                }
-                                        , fact = Nothing
+                            (\pointer ->
+                                { dragged =
+                                    Just
+                                        { x = pointer.x
+                                        , y = pointer.y
+                                        , offsetX = -strokeWidth
+                                        , offsetY = -strokeWidth
+                                        , block = BlockFact (Not maybeFactInverse)
                                         }
+                                , fact = Nothing
+                                }
                             )
                 }
 
@@ -1398,22 +1378,17 @@ factSvg dragState fact =
                 , shapeEventListenModifier =
                     domListenToPointerDown
                         |> Web.Dom.modifierFutureMap
-                            (\pointerDownEventPosition ->
-                                case pointerDownEventPosition of
-                                    Err _ ->
-                                        { dragged = dragState, fact = Just (Equal toEquate) }
-
-                                    Ok pointer ->
-                                        { dragged =
-                                            Just
-                                                { x = pointer.x
-                                                , y = pointer.y
-                                                , offsetX = -strokeWidth
-                                                , offsetY = -strokeWidth
-                                                , block = BlockFact (Equal toEquate)
-                                                }
-                                        , fact = Nothing
+                            (\pointer ->
+                                { dragged =
+                                    Just
+                                        { x = pointer.x
+                                        , y = pointer.y
+                                        , offsetX = -strokeWidth
+                                        , offsetY = -strokeWidth
+                                        , block = BlockFact (Equal toEquate)
                                         }
+                                , fact = Nothing
+                                }
                             )
                 }
 
@@ -1422,24 +1397,17 @@ factSvg dragState fact =
                 { shapeEventListenModifier =
                     domListenToPointerDown
                         |> Web.Dom.modifierFutureMap
-                            (\pointerDownEventPosition ->
-                                case pointerDownEventPosition of
-                                    Err _ ->
-                                        { dragged = dragState
-                                        , fact = Just (RelationUse relationUse)
+                            (\pointer ->
+                                { dragged =
+                                    Just
+                                        { x = pointer.x
+                                        , y = pointer.y
+                                        , offsetX = -strokeWidth
+                                        , offsetY = -strokeWidth
+                                        , block = BlockFact (RelationUse relationUse)
                                         }
-
-                                    Ok pointer ->
-                                        { dragged =
-                                            Just
-                                                { x = pointer.x
-                                                , y = pointer.y
-                                                , offsetX = -strokeWidth
-                                                , offsetY = -strokeWidth
-                                                , block = BlockFact (RelationUse relationUse)
-                                                }
-                                        , fact = Nothing
-                                        }
+                                , fact = Nothing
+                                }
                             )
                 , identifier = relationUse.identifier
                 , argumentAsSvg =
@@ -1507,7 +1475,14 @@ interface state =
         , Web.Dom.style "left" "0"
         ]
         [ let
-            sidebarBlocks : SizedSvg DragState
+            sidebarBlocks :
+                SizedSvg
+                    { x : Float
+                    , y : Float
+                    , offsetX : Float
+                    , offsetY : Float
+                    , block : BlockUiState
+                    }
             sidebarBlocks =
                 svgSizedVertical
                     [ valueLookupShapeSvg FastDict.empty
@@ -1515,19 +1490,13 @@ interface state =
                         |> sizedSvgStack
                             [ domListenToPointerDown
                                 |> Web.Dom.modifierFutureMap
-                                    (\pointerDownEventPosition ->
-                                        case pointerDownEventPosition of
-                                            Err _ ->
-                                                state.dragged
-
-                                            Ok pointer ->
-                                                Just
-                                                    { x = pointer.x
-                                                    , y = pointer.y
-                                                    , offsetX = -strokeWidth
-                                                    , offsetY = -strokeWidth
-                                                    , block = BlockValue (ValueLookup FastDict.empty)
-                                                    }
+                                    (\pointer ->
+                                        { x = pointer.x
+                                        , y = pointer.y
+                                        , offsetX = -strokeWidth
+                                        , offsetY = -strokeWidth
+                                        , block = BlockValue (ValueLookup FastDict.empty)
+                                        }
                                     )
                             ]
                         |> sizedSvgPad
@@ -1550,19 +1519,13 @@ interface state =
                                     |> sizedSvgStack
                                         [ domListenToPointerDown
                                             |> Web.Dom.modifierFutureMap
-                                                (\pointerDownEventPosition ->
-                                                    case pointerDownEventPosition of
-                                                        Err _ ->
-                                                            state.dragged
-
-                                                        Ok pointer ->
-                                                            Just
-                                                                { x = pointer.x
-                                                                , y = pointer.y
-                                                                , offsetX = -strokeWidth
-                                                                , offsetY = -strokeWidth
-                                                                , block = BlockValue (Variable availableVariable)
-                                                                }
+                                                (\pointer ->
+                                                    { x = pointer.x
+                                                    , y = pointer.y
+                                                    , offsetX = -strokeWidth
+                                                    , offsetY = -strokeWidth
+                                                    , block = BlockValue (Variable availableVariable)
+                                                    }
                                                 )
                                         ]
                             )
@@ -1584,19 +1547,13 @@ interface state =
                         |> sizedSvgStack
                             [ domListenToPointerDown
                                 |> Web.Dom.modifierFutureMap
-                                    (\pointerDownEventPosition ->
-                                        case pointerDownEventPosition of
-                                            Err _ ->
-                                                state.dragged
-
-                                            Ok pointer ->
-                                                Just
-                                                    { x = pointer.x
-                                                    , y = pointer.y
-                                                    , offsetX = -strokeWidth
-                                                    , offsetY = -strokeWidth
-                                                    , block = BlockFact (Not Nothing)
-                                                    }
+                                    (\pointer ->
+                                        { x = pointer.x
+                                        , y = pointer.y
+                                        , offsetX = -strokeWidth
+                                        , offsetY = -strokeWidth
+                                        , block = BlockFact (Not Nothing)
+                                        }
                                     )
                             ]
                     , factAllShapeSvg []
@@ -1610,19 +1567,13 @@ interface state =
                         |> sizedSvgStack
                             [ domListenToPointerDown
                                 |> Web.Dom.modifierFutureMap
-                                    (\pointerDownEventPosition ->
-                                        case pointerDownEventPosition of
-                                            Err _ ->
-                                                state.dragged
-
-                                            Ok pointer ->
-                                                Just
-                                                    { x = pointer.x
-                                                    , y = pointer.y
-                                                    , offsetX = -strokeWidth
-                                                    , offsetY = -strokeWidth
-                                                    , block = BlockFact (All [])
-                                                    }
+                                    (\pointer ->
+                                        { x = pointer.x
+                                        , y = pointer.y
+                                        , offsetX = -strokeWidth
+                                        , offsetY = -strokeWidth
+                                        , block = BlockFact (All [])
+                                        }
                                     )
                             ]
                     , factAnyShapeSvg []
@@ -1636,19 +1587,13 @@ interface state =
                         |> sizedSvgStack
                             [ domListenToPointerDown
                                 |> Web.Dom.modifierFutureMap
-                                    (\pointerDownEventPosition ->
-                                        case pointerDownEventPosition of
-                                            Err _ ->
-                                                state.dragged
-
-                                            Ok pointer ->
-                                                Just
-                                                    { x = pointer.x
-                                                    , y = pointer.y
-                                                    , offsetX = -strokeWidth
-                                                    , offsetY = -strokeWidth
-                                                    , block = BlockFact (Any [])
-                                                    }
+                                    (\pointer ->
+                                        { x = pointer.x
+                                        , y = pointer.y
+                                        , offsetX = -strokeWidth
+                                        , offsetY = -strokeWidth
+                                        , block = BlockFact (Any [])
+                                        }
                                     )
                             ]
                     , factEqualsShapeSvg { a = Nothing, b = Nothing }
@@ -1662,21 +1607,14 @@ interface state =
                         |> sizedSvgStack
                             [ domListenToPointerDown
                                 |> Web.Dom.modifierFutureMap
-                                    (\pointerDownEventPosition ->
-                                        case pointerDownEventPosition of
-                                            Err _ ->
-                                                state.dragged
-
-                                            Ok pointer ->
-                                                Just
-                                                    { x = pointer.x
-                                                    , y = pointer.y
-                                                    , offsetX = -strokeWidth
-                                                    , offsetY = -strokeWidth
-                                                    , block =
-                                                        BlockFact
-                                                            (Equal { a = Nothing, b = Nothing })
-                                                    }
+                                    (\pointer ->
+                                        { x = pointer.x
+                                        , y = pointer.y
+                                        , offsetX = -strokeWidth
+                                        , offsetY = -strokeWidth
+                                        , block =
+                                            BlockFact (Equal { a = Nothing, b = Nothing })
+                                        }
                                     )
                             ]
                     , let
@@ -1700,25 +1638,19 @@ interface state =
                                     |> sizedSvgStack
                                         [ domListenToPointerDown
                                             |> Web.Dom.modifierFutureMap
-                                                (\pointerDownEventPosition ->
-                                                    case pointerDownEventPosition of
-                                                        Err _ ->
-                                                            state.dragged
-
-                                                        Ok pointer ->
-                                                            Just
-                                                                { x = pointer.x
-                                                                , y = pointer.y
-                                                                , offsetX = -strokeWidth
-                                                                , offsetY = -strokeWidth
-                                                                , block =
-                                                                    BlockFact
-                                                                        (RelationUse
-                                                                            { identifier = relationIdentifier
-                                                                            , argument = Nothing
-                                                                            }
-                                                                        )
+                                                (\pointer ->
+                                                    { x = pointer.x
+                                                    , y = pointer.y
+                                                    , offsetX = -strokeWidth
+                                                    , offsetY = -strokeWidth
+                                                    , block =
+                                                        BlockFact
+                                                            (RelationUse
+                                                                { identifier = relationIdentifier
+                                                                , argument = Nothing
                                                                 }
+                                                            )
+                                                    }
                                                 )
                                         ]
                             )
@@ -1820,7 +1752,7 @@ interface state =
                     []
                 , sidebarBlocks.svg
                     |> Web.Dom.futureMap
-                        (\dragState -> { state | dragged = dragState })
+                        (\draggedState -> { state | dragged = Just draggedState })
                 ]
             , svgStack
                 [ svgAttributeTranslate { x = sidebarBlocks.width, y = 0 }
@@ -2278,22 +2210,17 @@ blockVerticalFactListSvg config =
                 [ domModifierFillUniform config.color
                 , domListenToPointerDown
                     |> Web.Dom.modifierFutureMap
-                        (\pointerDownEventPosition ->
-                            case pointerDownEventPosition of
-                                Err _ ->
-                                    { dragged = config.dragState, elements = Just config.elements }
-
-                                Ok pointer ->
-                                    { dragged =
-                                        Just
-                                            { x = pointer.x
-                                            , y = pointer.y
-                                            , offsetX = -strokeWidth
-                                            , offsetY = -strokeWidth
-                                            , block = BlockFact config.fact
-                                            }
-                                    , elements = Nothing
+                        (\pointer ->
+                            { dragged =
+                                Just
+                                    { x = pointer.x
+                                    , y = pointer.y
+                                    , offsetX = -strokeWidth
+                                    , offsetY = -strokeWidth
+                                    , block = BlockFact config.fact
                                     }
+                            , elements = Nothing
+                            }
                         )
                 ]
                 (verticalFactListPolygonPoints
