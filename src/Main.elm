@@ -52,8 +52,6 @@ type alias DragState =
     Maybe
         { x : Float
         , y : Float
-        , offsetX : Float
-        , offsetY : Float
         , block : BlockUiState
         }
 
@@ -1233,8 +1231,6 @@ valueSvg dragState =
                                         Just
                                             { x = pointer.x
                                             , y = pointer.y
-                                            , offsetX = -strokeWidth
-                                            , offsetY = -strokeWidth
                                             , block = BlockValue (Variable variableName)
                                             }
                                     , value = Nothing
@@ -1252,8 +1248,6 @@ valueSvg dragState =
                                         Just
                                             { x = pointer.x
                                             , y = pointer.y
-                                            , offsetX = -strokeWidth
-                                            , offsetY = -strokeWidth
                                             , block = BlockValue (ValueLookup valueLookup)
                                             }
                                     , value = Nothing
@@ -1348,8 +1342,6 @@ factSvg dragState fact =
                                     Just
                                         { x = pointer.x
                                         , y = pointer.y
-                                        , offsetX = -strokeWidth
-                                        , offsetY = -strokeWidth
                                         , block = BlockFact (Not maybeFactInverse)
                                         }
                                 , fact = Nothing
@@ -1383,8 +1375,6 @@ factSvg dragState fact =
                                     Just
                                         { x = pointer.x
                                         , y = pointer.y
-                                        , offsetX = -strokeWidth
-                                        , offsetY = -strokeWidth
                                         , block = BlockFact (Equal toEquate)
                                         }
                                 , fact = Nothing
@@ -1402,8 +1392,6 @@ factSvg dragState fact =
                                     Just
                                         { x = pointer.x
                                         , y = pointer.y
-                                        , offsetX = -strokeWidth
-                                        , offsetY = -strokeWidth
                                         , block = BlockFact (RelationUse relationUse)
                                         }
                                 , fact = Nothing
@@ -1479,8 +1467,6 @@ interface state =
                 SizedSvg
                     { x : Float
                     , y : Float
-                    , offsetX : Float
-                    , offsetY : Float
                     , block : BlockUiState
                     }
             sidebarBlocks =
@@ -1493,8 +1479,6 @@ interface state =
                                     (\pointer ->
                                         { x = pointer.x
                                         , y = pointer.y
-                                        , offsetX = -strokeWidth
-                                        , offsetY = -strokeWidth
                                         , block = BlockValue (ValueLookup FastDict.empty)
                                         }
                                     )
@@ -1522,8 +1506,6 @@ interface state =
                                                 (\pointer ->
                                                     { x = pointer.x
                                                     , y = pointer.y
-                                                    , offsetX = -strokeWidth
-                                                    , offsetY = -strokeWidth
                                                     , block = BlockValue (Variable availableVariable)
                                                     }
                                                 )
@@ -1550,8 +1532,6 @@ interface state =
                                     (\pointer ->
                                         { x = pointer.x
                                         , y = pointer.y
-                                        , offsetX = -strokeWidth
-                                        , offsetY = -strokeWidth
                                         , block = BlockFact (Not Nothing)
                                         }
                                     )
@@ -1570,8 +1550,6 @@ interface state =
                                     (\pointer ->
                                         { x = pointer.x
                                         , y = pointer.y
-                                        , offsetX = -strokeWidth
-                                        , offsetY = -strokeWidth
                                         , block = BlockFact (All [])
                                         }
                                     )
@@ -1590,8 +1568,6 @@ interface state =
                                     (\pointer ->
                                         { x = pointer.x
                                         , y = pointer.y
-                                        , offsetX = -strokeWidth
-                                        , offsetY = -strokeWidth
                                         , block = BlockFact (Any [])
                                         }
                                     )
@@ -1610,8 +1586,6 @@ interface state =
                                     (\pointer ->
                                         { x = pointer.x
                                         , y = pointer.y
-                                        , offsetX = -strokeWidth
-                                        , offsetY = -strokeWidth
                                         , block =
                                             BlockFact (Equal { a = Nothing, b = Nothing })
                                         }
@@ -1641,8 +1615,6 @@ interface state =
                                                 (\pointer ->
                                                     { x = pointer.x
                                                     , y = pointer.y
-                                                    , offsetX = -strokeWidth
-                                                    , offsetY = -strokeWidth
                                                     , block =
                                                         BlockFact
                                                             (RelationUse
@@ -1697,8 +1669,6 @@ interface state =
                                                 Just
                                                     { x = position.x
                                                     , y = position.y
-                                                    , offsetX = stateDragged.offsetX
-                                                    , offsetY = stateDragged.offsetY
                                                     , block = stateDragged.block
                                                     }
                                         }
@@ -1724,8 +1694,8 @@ interface state =
                                         , strayThings =
                                             state.strayThings
                                                 |> (::)
-                                                    { x = dragged.x + dragged.offsetX
-                                                    , y = dragged.y + dragged.offsetY
+                                                    { x = dragged.x + dragOffsetX
+                                                    , y = dragged.y + dragOffsetY
                                                     , block = dragged.block
                                                     }
                                     }
@@ -1769,8 +1739,8 @@ interface state =
                                         , strayThings =
                                             state.strayThings
                                                 |> (::)
-                                                    { x = dragged.x + dragged.offsetX
-                                                    , y = dragged.y + dragged.offsetY
+                                                    { x = dragged.x + dragOffsetX
+                                                    , y = dragged.y + dragOffsetY
                                                     , block = dragged.block
                                                     }
                                     }
@@ -1855,8 +1825,8 @@ interface state =
                 Just dragged ->
                     svgStack
                         [ svgAttributeTranslate
-                            { x = dragged.x + dragged.offsetX
-                            , y = dragged.y + dragged.offsetY
+                            { x = dragged.x + dragOffsetX
+                            , y = dragged.y + dragOffsetY
                             }
                         , Web.Dom.style "pointer-events" "none"
                         ]
@@ -1872,6 +1842,16 @@ interface state =
         |> Web.Dom.render
     ]
         |> Web.interfaceBatch
+
+
+dragOffsetX : Float
+dragOffsetX =
+    -strokeWidth
+
+
+dragOffsetY : Float
+dragOffsetY =
+    -strokeWidth
 
 
 domSvgContainer :
@@ -2215,8 +2195,6 @@ blockVerticalFactListSvg config =
                                 Just
                                     { x = pointer.x
                                     , y = pointer.y
-                                    , offsetX = -strokeWidth
-                                    , offsetY = -strokeWidth
                                     , block = BlockFact config.fact
                                     }
                             , elements = Nothing
