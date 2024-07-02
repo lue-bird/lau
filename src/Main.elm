@@ -1,4 +1,4 @@
-port module Main exposing (BlockUiState(..), DragState, FactUiState(..), State, ValueUiState(..), main)
+port module Main exposing (BlockUiState(..), DragState, FactUiState(..), State, TextInputUiState, ValueUiState(..), main)
 
 {- dev notes
 
@@ -45,6 +45,8 @@ type alias State =
         }
     , strayThings : List { x : Float, y : Float, block : BlockUiState }
     , dragged : DragState
+    , createVariable : TextInputUiState
+    , createEntryKey : TextInputUiState
     }
 
 
@@ -54,6 +56,11 @@ type alias DragState =
         , y : Float
         , block : BlockUiState
         }
+
+
+type TextInputUiState
+    = Editing String
+    | DoneEditing String
 
 
 type BlockUiState
@@ -328,6 +335,8 @@ initialState =
                 |> Just
         }
     , strayThings = []
+    , createVariable = Editing ""
+    , createEntryKey = Editing ""
     }
 
 
@@ -543,11 +552,16 @@ unselectableTextSvg string =
             [ Web.Dom.style "user-select" "none"
             , Web.Dom.style "pointer-events" "none"
             , Web.Dom.attribute "x" (0 |> String.fromFloat)
-            , Web.Dom.attribute "y" (0.77 * fontSize |> String.fromFloat)
+            , Web.Dom.attribute "y" (fontBaseline * fontSize |> String.fromFloat)
             , domModifierFillUniform (Color.rgb 1 1 1)
             ]
             [ Web.Dom.text string ]
     }
+
+
+fontBaseline : Float
+fontBaseline =
+    0.77
 
 
 svgStack :
@@ -589,8 +603,8 @@ sizedSvgPad additionalPadding =
         }
 
 
-horizontalCenteredSvg : List (SizedSvg future) -> SizedSvg future
-horizontalCenteredSvg elements =
+svgSizedHorizontalCentered : List (SizedSvg future) -> SizedSvg future
+svgSizedHorizontalCentered elements =
     let
         fullHeight : Float
         fullHeight =
@@ -690,7 +704,7 @@ factEqualsSvgWithInteractivity parts =
 
         contentSvg : SizedSvg future
         contentSvg =
-            horizontalCenteredSvg
+            svgSizedHorizontalCentered
                 [ parts.valueASvg
                 , equalsTextSvg
                     |> sizedSvgPad
@@ -760,7 +774,7 @@ relationUseSvgWithInteractivity parts =
 
         contentSvg : SizedSvg future
         contentSvg =
-            horizontalCenteredSvg
+            svgSizedHorizontalCentered
                 [ identifierTextSvg
                     |> sizedSvgPad
                         { top = strokeWidth / 2
@@ -1097,7 +1111,7 @@ valueLookupEntryContentSvg =
             entryNameSvg =
                 unselectableTextSvg entry.key
         in
-        horizontalCenteredSvg
+        svgSizedHorizontalCentered
             [ entryNameSvg
                 |> sizedSvgPad
                     { left = strokeWidth / 2
@@ -1651,6 +1665,162 @@ interface state =
         , Web.Dom.style "left" "0"
         ]
         [ let
+            createVariableSvg : SizedSvg State
+            createVariableSvg =
+                case state.createVariable of
+                    DoneEditing variableName ->
+                        variableShapeSvg variableName
+                            |> List.singleton
+                            |> sizedSvgStack
+                                [ domListenToPointerDown
+                                    |> Web.Dom.modifierFutureMap
+                                        (\pointer ->
+                                            { state
+                                                | createVariable = Editing ""
+                                                , dragged =
+                                                    Just
+                                                        { x = pointer.x
+                                                        , y = pointer.y
+                                                        , block = BlockValue (Variable variableName)
+                                                        }
+                                            }
+                                        )
+                                ]
+
+                    Editing variableName ->
+                        svgSizedHorizontalCentered
+                            [ unselectableTextSvg "+"
+                                |> sizedSvgPad
+                                    { left = 0
+                                    , right = fontWidth * 2
+                                    , top = 0
+                                    , bottom = 0
+                                    }
+                            , let
+                                variableNameTextInputSvg : SizedSvg State
+                                variableNameTextInputSvg =
+                                    svgSizedTextInput variableName
+                                        |> sizedSvgFutureMap
+                                            (\future ->
+                                                { state
+                                                    | createVariable = future
+                                                }
+                                            )
+                                        |> sizedSvgPad
+                                            { left = strokeWidth / 2
+                                            , right = strokeWidth / 2
+                                            , top = strokeWidth / 2
+                                            , bottom = strokeWidth / 2
+                                            }
+                              in
+                              sizedSvgStack []
+                                [ sizedSvgRoundedRect
+                                    [ domModifierFillUniform variableBackgroundColor
+                                    ]
+                                    { width = variableNameTextInputSvg.width
+                                    , height = variableNameTextInputSvg.height
+                                    , radius = strokeWidth
+                                    }
+                                , variableNameTextInputSvg
+                                ]
+                            ]
+
+            createEntryKeySvg : SizedSvg State
+            createEntryKeySvg =
+                case state.createEntryKey of
+                    DoneEditing entryKey ->
+                        valueLookupShapeSvg
+                            [ { key = entryKey, value = Nothing } ]
+                            |> List.singleton
+                            |> sizedSvgStack
+                                [ domListenToPointerDown
+                                    |> Web.Dom.modifierFutureMap
+                                        (\pointer ->
+                                            { state
+                                                | createEntryKey = Editing ""
+                                                , dragged =
+                                                    Just
+                                                        { x = pointer.x
+                                                        , y = pointer.y
+                                                        , block = BlockValue (ValueLookup [ { key = entryKey, value = Nothing } ])
+                                                        }
+                                            }
+                                        )
+                                ]
+
+                    Editing entryKey ->
+                        svgSizedHorizontalCentered
+                            [ unselectableTextSvg "+"
+                                |> sizedSvgPad
+                                    { left = 0
+                                    , right = fontWidth * 2
+                                    , top = 0
+                                    , bottom = 0
+                                    }
+                            , let
+                                variableNameTextInputSvg : SizedSvg State
+                                variableNameTextInputSvg =
+                                    svgSizedTextInput entryKey
+                                        |> sizedSvgFutureMap
+                                            (\future ->
+                                                { state
+                                                    | createEntryKey = future
+                                                }
+                                            )
+                                        |> sizedSvgPad
+                                            { left = strokeWidth / 2
+                                            , right = strokeWidth / 2
+                                            , top = strokeWidth / 2
+                                            , bottom = strokeWidth / 2
+                                            }
+
+                                valueLookupContentSvg : SizedSvg State
+                                valueLookupContentSvg =
+                                    svgSizedHorizontalCentered
+                                        [ variableNameTextInputSvg
+                                        , valueHoleShapeSvg valueLookupBackgroundColor
+                                        ]
+                              in
+                              sizedSvgStack []
+                                [ sizedSvgRoundedRect
+                                    [ domModifierFillUniform valueLookupBackgroundColor
+                                    ]
+                                    { width = valueLookupContentSvg.width
+                                    , height = valueLookupContentSvg.height
+                                    , radius = strokeWidth
+                                    }
+                                , valueLookupContentSvg
+                                ]
+                            ]
+
+            sidebarContent : SizedSvg State
+            sidebarContent =
+                svgSizedVertical
+                    [ createVariableSvg
+                        |> sizedSvgPad
+                            { left = 0
+                            , right = 0
+                            , top = 0
+                            , bottom = strokeWidth
+                            }
+                    , createEntryKeySvg
+                        |> sizedSvgPad
+                            { left = 0
+                            , right = 0
+                            , top = 0
+                            , bottom = strokeWidth * 2
+                            }
+                    , sidebarBlocks
+                        |> sizedSvgFutureMap
+                            (\draggedState -> { state | dragged = Just draggedState })
+                    ]
+                    |> sizedSvgPad
+                        { left = strokeWidth
+                        , right = strokeWidth
+                        , top = strokeWidth * 2
+                        , bottom = 0
+                        }
+
             sidebarBlocks :
                 SizedSvg
                     { x : Float
@@ -1737,8 +1907,8 @@ interface state =
                         |> sizedSvgPad
                             { left = 0
                             , right = 0
+                            , bottom = strokeWidth / 2
                             , top = 0
-                            , bottom = strokeWidth
                             }
                     , factNotShapeSvg Nothing
                         |> sizedSvgPad
@@ -1850,12 +2020,6 @@ interface state =
                             )
                         |> svgSizedVertical
                     ]
-                    |> sizedSvgPad
-                        { left = strokeWidth
-                        , right = strokeWidth
-                        , top = strokeWidth * 2
-                        , bottom = 0
-                        }
           in
           domSvgContainer
             { left = 0
@@ -1942,12 +2106,10 @@ interface state =
                     , domModifierFillUniform (Color.rgb 0.03 0.02 0)
                     ]
                     []
-                , sidebarBlocks.svg
-                    |> Web.Dom.futureMap
-                        (\draggedState -> { state | dragged = Just draggedState })
+                , sidebarContent.svg
                 ]
             , svgStack
-                [ svgAttributeTranslate { x = sidebarBlocks.width, y = 0 }
+                [ svgAttributeTranslate { x = sidebarContent.width, y = 0 }
                 , case state.dragged of
                     Nothing ->
                         Web.Dom.modifierNone
@@ -2078,6 +2240,91 @@ relationDefinitionVariables =
             (relationDefinition.parameter |> maybeValueVariables)
 
 
+svgSizedTextInput : String -> SizedSvg TextInputUiState
+svgSizedTextInput currentString =
+    let
+        textInputWidth : Float
+        textInputWidth =
+            Basics.max (fontWidth * 10)
+                (fontWidth + fontWidth * (currentString |> String.length |> Basics.toFloat))
+
+        textInputHeight : Float
+        textInputHeight =
+            fontSize
+
+        submit : String -> TextInputUiState
+        submit newString =
+            case newString of
+                "" ->
+                    Editing ""
+
+                nonBlankNewString ->
+                    DoneEditing nonBlankNewString
+    in
+    { height = textInputHeight
+    , width = textInputWidth
+    , svg =
+        Web.Svg.element "foreignObject"
+            [ Web.Dom.attribute "x" "0"
+            , Web.Dom.attribute "y" "0"
+            , Web.Dom.attribute "width" (textInputWidth |> String.fromFloat)
+            , Web.Dom.attribute "height" (textInputHeight |> String.fromFloat)
+            ]
+            [ Web.Dom.element "input"
+                [ Web.Dom.attribute "type" "text"
+                , Web.Dom.style "background-color" "transparent"
+                , Web.Dom.style "color" "inherit"
+                , Web.Dom.style "border" "none"
+                , Web.Dom.style "font-size" "1em"
+                , Web.Dom.stringProperty "value" currentString
+                , Web.Dom.listenTo "input"
+                    |> Web.Dom.modifierFutureMap
+                        (\inputEventJson ->
+                            case
+                                inputEventJson
+                                    |> Json.Decode.decodeValue
+                                        (Json.Decode.field "target" (Json.Decode.field "value" Json.Decode.string))
+                            of
+                                Err _ ->
+                                    Editing currentString
+
+                                Ok newName ->
+                                    Editing newName
+                        )
+                , Web.Dom.listenTo "keydown"
+                    |> Web.Dom.modifierFutureMap
+                        (\keyDownEventJson ->
+                            case
+                                keyDownEventJson
+                                    |> Json.Decode.decodeValue
+                                        (let
+                                            enterKeyJsonDecode : Int -> Json.Decode.Decoder ()
+                                            enterKeyJsonDecode keyCode =
+                                                if keyCode == 13 then
+                                                    Json.Decode.succeed ()
+
+                                                else
+                                                    Json.Decode.fail "non-enter"
+                                         in
+                                         Json.Decode.andThen enterKeyJsonDecode
+                                            (Json.Decode.field "keyCode" Json.Decode.int)
+                                        )
+                            of
+                                Err _ ->
+                                    Editing currentString
+
+                                Ok () ->
+                                    submit currentString
+                        )
+                , Web.Dom.listenTo "blur"
+                    |> Web.Dom.modifierFutureMap
+                        (\_ -> submit currentString)
+                ]
+                []
+            ]
+    }
+
+
 dragOffsetX : Float
 dragOffsetX =
     -strokeWidth
@@ -2173,7 +2420,7 @@ relationDefinitionSvg dragState definition =
                     }
                 }
         headerContent =
-            horizontalCenteredSvg
+            svgSizedHorizontalCentered
                 [ nameSvg
                     |> sizedSvgPad
                         { left = 0

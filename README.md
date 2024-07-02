@@ -22,8 +22,6 @@ Reduces things you need to know and keep in your mind.
       - fix issue where double click removes outer
       - block sidebar
           - search (relation, variable, entry key)
-          - variable creating
-          - value lookup entry creating
           - relation definition creating
           - variable renaming
           - value lookup entry key renaming
