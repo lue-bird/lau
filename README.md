@@ -21,16 +21,17 @@ Reduces things you need to know and keep in your mind.
       - scrolling
       - fix issue where double click removes outer
       - block sidebar
-          - list of entry blocks using existing entry keys in the project
+          - search (relation, variable, entry key)
           - variable creating
-          - relation definition creating
           - value lookup entry creating
+          - relation definition creating
           - variable renaming
-          - relation renaming
           - value lookup entry key renaming
-          - search for relation
+          - relation renaming
       - switching relation definition
       - evaluation frame
+
+![screenshot of the in-progress ui](https://github.com/lue-bird/lau/assets/81869893/667902e2-f228-4d4e-9b3e-0801e95f2fe9)
 
 ## web
 run locally with
@@ -60,6 +61,8 @@ npx vite
 ## considering (so might never be part of the language)
 
   - uis written in lau where interacting with the outside world is simple and safe which you can even embed in lau code itself
+  - relations adding its defined parameter (one level deep, so without variables) as an argument
+  - relation pinning
   - you don't need to worry about caching and many other optimizations due to laziness
   - identification not by name internally (so that switching languages is easier, renaming is not a breaking change and names can overlap)
   - a story for exhaustive case handling (current workaround with giving value lookup might be a bit rough?)

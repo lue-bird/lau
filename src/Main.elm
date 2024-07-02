@@ -131,6 +131,74 @@ valueVariables =
                         (\entry -> entry.value |> maybeValueVariables)
 
 
+relationDefinitionEntryKeys :
+    { identifier : String
+    , parameter : Maybe ValueUiState
+    , equivalentFact : Maybe FactUiState
+    }
+    -> Set String
+relationDefinitionEntryKeys =
+    \relationDefinition ->
+        Set.union (relationDefinition.parameter |> maybeValueEntryKeys)
+            (relationDefinition.equivalentFact |> maybeFactEntryKeys)
+
+
+maybeFactEntryKeys : Maybe FactUiState -> Set String
+maybeFactEntryKeys =
+    \maybeFact ->
+        case maybeFact of
+            Nothing ->
+                Set.empty
+
+            Just fact ->
+                fact |> factEntryKeys
+
+
+factEntryKeys : FactUiState -> Set String
+factEntryKeys =
+    \fact ->
+        case fact of
+            RelationUse relationUse ->
+                relationUse.argument |> maybeValueEntryKeys
+
+            Not inverseFact ->
+                inverseFact |> maybeFactEntryKeys
+
+            All parts ->
+                parts |> List.LocalExtra.setFlatMap factEntryKeys
+
+            Any branches ->
+                branches |> List.LocalExtra.setFlatMap factEntryKeys
+
+            Equal values ->
+                Set.union (values.a |> maybeValueEntryKeys)
+                    (values.b |> maybeValueEntryKeys)
+
+
+maybeValueEntryKeys : Maybe ValueUiState -> Set String
+maybeValueEntryKeys =
+    \maybeValue ->
+        case maybeValue of
+            Nothing ->
+                Set.empty
+
+            Just value ->
+                value |> valueEntryKeys
+
+
+valueEntryKeys : ValueUiState -> Set String
+valueEntryKeys =
+    \value ->
+        case value of
+            Variable _ ->
+                Set.empty
+
+            ValueLookup valueLookup ->
+                valueLookup
+                    |> List.LocalExtra.setFlatMap
+                        (\entry -> Set.insert entry.key (entry.value |> maybeValueEntryKeys))
+
+
 factUiStateToLau : FactUiState -> Maybe Lau.Fact
 factUiStateToLau =
     \factWithHoles ->
@@ -248,7 +316,7 @@ initialState =
                     ]
                 , All
                     [ RelationUse
-                        { identifier = "is less than 10"
+                        { identifier = "is greater or equal to 0"
                         , argument = Variable "state" |> Just
                         }
                     , Equal
@@ -1609,6 +1677,40 @@ interface state =
                             , top = 0
                             , bottom = strokeWidth
                             }
+                    , Set.union (state.relationDefinitionShown |> relationDefinitionEntryKeys)
+                        (state.relationDefinitionsNotShown
+                            |> fastDictSetFlatMap
+                                (\identifier info ->
+                                    relationDefinitionEntryKeys
+                                        { identifier = identifier
+                                        , parameter = info.parameter
+                                        , equivalentFact = info.equivalentFact
+                                        }
+                                )
+                        )
+                        |> Set.toList
+                        |> List.map
+                            (\entryKey ->
+                                valueLookupShapeSvg [ { key = entryKey, value = Nothing } ]
+                                    |> List.singleton
+                                    |> sizedSvgStack
+                                        [ domListenToPointerDown
+                                            |> Web.Dom.modifierFutureMap
+                                                (\pointer ->
+                                                    { x = pointer.x
+                                                    , y = pointer.y
+                                                    , block = BlockValue (ValueLookup [ { key = entryKey, value = Nothing } ])
+                                                    }
+                                                )
+                                        ]
+                            )
+                        |> svgSizedVertical
+                        |> sizedSvgPad
+                            { left = 0
+                            , right = 0
+                            , top = 0
+                            , bottom = strokeWidth
+                            }
                     , let
                         variables : Set String
                         variables =
@@ -2415,6 +2517,19 @@ blockVerticalFactListShapeSvg config =
                 [ elementsSvg.svg ]
             ]
     }
+
+
+fastDictSetFlatMap :
+    (comparableDictKey -> value -> Set comparableSetElement)
+    -> (FastDict.Dict comparableDictKey value -> Set comparableSetElement)
+fastDictSetFlatMap entryToSet =
+    \dict ->
+        dict
+            |> FastDict.foldl
+                (\key value soFar ->
+                    Set.union (entryToSet key value) soFar
+                )
+                Set.empty
 
 
 port toJs : Json.Encode.Value -> Cmd event_

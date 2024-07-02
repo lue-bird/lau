@@ -3,13 +3,13 @@ module List.LocalExtra exposing (allJustMap, elementAtIndexAlter, firstJustMap, 
 import Set exposing (Set)
 
 
-setFlatMap : (a -> Set comparableB) -> (List a -> Set comparableB)
+setFlatMap : (a -> Set comparableSetElement) -> (List a -> Set comparableSetElement)
 setFlatMap elementToSet =
     \list ->
         list
             |> List.foldl
                 (\element soFar ->
-                    Set.union soFar (element |> elementToSet)
+                    Set.union (element |> elementToSet) soFar
                 )
                 Set.empty
 
