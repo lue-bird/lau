@@ -22,12 +22,12 @@ Reduces things you need to know and keep in your mind.
       - fix issue where double click removes outer
       - block sidebar
           - search (relation, variable, entry key)
-          - relation definition creating
           - variable renaming
           - value lookup entry key renaming
           - relation renaming
-      - switching relation definition
+          - switching relation definition
       - evaluation frame
+      - relation definition deleting
 
 ![screenshot of the in-progress ui](https://github.com/lue-bird/lau/assets/81869893/667902e2-f228-4d4e-9b3e-0801e95f2fe9)
 

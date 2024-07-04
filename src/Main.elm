@@ -1,4 +1,4 @@
-port module Main exposing (BlockUiState(..), DragState, FactUiState(..), State, TextInputUiState, ValueUiState(..), main)
+port module Main exposing (BlockUiState(..), DragState, FactUiState(..), State, TextInputUiState(..), ValueUiState(..), main)
 
 {- dev notes
 
@@ -47,6 +47,7 @@ type alias State =
     , dragged : DragState
     , createVariable : TextInputUiState
     , createEntryKey : TextInputUiState
+    , createRelationIdentifier : String
     }
 
 
@@ -138,18 +139,6 @@ valueVariables =
                         (\entry -> entry.value |> maybeValueVariables)
 
 
-relationDefinitionEntryKeys :
-    { identifier : String
-    , parameter : Maybe ValueUiState
-    , equivalentFact : Maybe FactUiState
-    }
-    -> Set String
-relationDefinitionEntryKeys =
-    \relationDefinition ->
-        Set.union (relationDefinition.parameter |> maybeValueEntryKeys)
-            (relationDefinition.equivalentFact |> maybeFactEntryKeys)
-
-
 maybeFactEntryKeys : Maybe FactUiState -> Set String
 maybeFactEntryKeys =
     \maybeFact ->
@@ -159,6 +148,17 @@ maybeFactEntryKeys =
 
             Just fact ->
                 fact |> factEntryKeys
+
+
+maybeValueEntryKeys : Maybe ValueUiState -> Set String
+maybeValueEntryKeys =
+    \maybeValue ->
+        case maybeValue of
+            Nothing ->
+                Set.empty
+
+            Just value ->
+                value |> valueEntryKeys
 
 
 factEntryKeys : FactUiState -> Set String
@@ -180,17 +180,6 @@ factEntryKeys =
             Equal values ->
                 Set.union (values.a |> maybeValueEntryKeys)
                     (values.b |> maybeValueEntryKeys)
-
-
-maybeValueEntryKeys : Maybe ValueUiState -> Set String
-maybeValueEntryKeys =
-    \maybeValue ->
-        case maybeValue of
-            Nothing ->
-                Set.empty
-
-            Just value ->
-                value |> valueEntryKeys
 
 
 valueEntryKeys : ValueUiState -> Set String
@@ -337,6 +326,7 @@ initialState =
     , strayThings = []
     , createVariable = Editing ""
     , createEntryKey = Editing ""
+    , createRelationIdentifier = ""
     }
 
 
@@ -1175,6 +1165,11 @@ sizedSvgStack modifiers elements =
     }
 
 
+variableBackgroundColor : Color
+variableBackgroundColor =
+    Color.rgb 0 0.19 0.21
+
+
 variableShapeSvg : String -> SizedSvg future_
 variableShapeSvg =
     \variableName ->
@@ -1200,11 +1195,6 @@ variableShapeSvg =
             [ backgroundSvg
             , nameSvg
             ]
-
-
-variableBackgroundColor : Color
-variableBackgroundColor =
-    Color.rgb 0 0.19 0.21
 
 
 valueSvg :
@@ -1644,6 +1634,97 @@ valueLookupShapeSvg valueLookup =
                 ]
 
 
+relationDefinitionSvgWithInteractivity :
+    { identifier : SizedSvg future
+    , parameter : SizedSvg future
+    , equivalentFact : SizedSvg future
+    }
+    -> SizedSvg future
+relationDefinitionSvgWithInteractivity definition =
+    let
+        equalsTextSvg : SizedSvg future_
+        equalsTextSvg =
+            unselectableTextSvg "="
+
+        headerWidth : Float
+        headerWidth =
+            (strokeWidth / 2)
+                + definition.identifier.width
+                + fontWidth
+                + definition.parameter.width
+                + fontWidth
+                + equalsTextSvg.width
+                + (strokeWidth / 2)
+
+        fullWidth : Float
+        fullWidth =
+            headerWidth + definition.equivalentFact.width
+
+        headerContent : SizedSvg future
+        headerContent =
+            svgSizedHorizontalCentered
+                [ definition.identifier
+                    |> sizedSvgPad
+                        { left = 0
+                        , right = fontWidth
+                        , top = strokeWidth / 2
+                        , bottom = strokeWidth / 2
+                        }
+                , definition.parameter
+                , equalsTextSvg
+                    |> sizedSvgPad
+                        { left = fontWidth
+                        , right = 0
+                        , top = strokeWidth / 2
+                        , bottom = strokeWidth / 2
+                        }
+                ]
+
+        fullHeight : Float
+        fullHeight =
+            Basics.max headerContent.height definition.equivalentFact.height
+
+        shapeSvg : SizedSvg future_
+        shapeSvg =
+            svgPolygon
+                [ domModifierFillUniform relationBackgroundColor
+                ]
+                [ ( 0, 0 )
+                , ( headerWidth, 0 )
+                , ( fullWidth, 0 )
+                , ( fullWidth, (fullHeight - definition.equivalentFact.height) / 2 )
+                , ( headerWidth, (fullHeight - definition.equivalentFact.height) / 2 + strokeWidth )
+                , ( headerWidth, fullHeight - (fullHeight - definition.equivalentFact.height) / 2 - strokeWidth )
+                , ( fullWidth, fullHeight - (fullHeight - definition.equivalentFact.height) / 2 )
+                , ( fullWidth, fullHeight )
+                , ( headerWidth, fullHeight )
+                , ( 0, fullHeight )
+                ]
+    in
+    { height = fullHeight
+    , width = fullWidth
+    , svg =
+        svgStack
+            []
+            [ shapeSvg.svg
+            , svgStack
+                [ svgAttributeTranslate
+                    { x = strokeWidth / 2
+                    , y = 0
+                    }
+                ]
+                [ headerContent.svg ]
+            , svgStack
+                [ svgAttributeTranslate
+                    { x = headerWidth
+                    , y = (fullHeight - definition.equivalentFact.height) / 2
+                    }
+                ]
+                [ definition.equivalentFact.svg ]
+            ]
+    }
+
+
 interface : State -> Web.Interface State
 interface state =
     [ [ Web.Window.sizeRequest, Web.Window.resizeListen ]
@@ -1688,41 +1769,32 @@ interface state =
                                 ]
 
                     Editing variableName ->
-                        svgSizedHorizontalCentered
-                            [ unselectableTextSvg "+"
-                                |> sizedSvgPad
-                                    { left = 0
-                                    , right = fontWidth * 2
-                                    , top = 0
-                                    , bottom = 0
-                                    }
-                            , let
-                                variableNameTextInputSvg : SizedSvg State
-                                variableNameTextInputSvg =
-                                    svgSizedTextInput variableName
-                                        |> sizedSvgFutureMap
-                                            (\future ->
-                                                { state
-                                                    | createVariable = future
-                                                }
-                                            )
-                                        |> sizedSvgPad
-                                            { left = strokeWidth / 2
-                                            , right = strokeWidth / 2
-                                            , top = strokeWidth / 2
-                                            , bottom = strokeWidth / 2
+                        let
+                            variableNameTextInputSvg : SizedSvg State
+                            variableNameTextInputSvg =
+                                svgSizedTextInput variableName
+                                    |> sizedSvgFutureMap
+                                        (\future ->
+                                            { state
+                                                | createVariable = future
                                             }
-                              in
-                              sizedSvgStack []
-                                [ sizedSvgRoundedRect
-                                    [ domModifierFillUniform variableBackgroundColor
-                                    ]
-                                    { width = variableNameTextInputSvg.width
-                                    , height = variableNameTextInputSvg.height
-                                    , radius = strokeWidth
-                                    }
-                                , variableNameTextInputSvg
+                                        )
+                                    |> sizedSvgPad
+                                        { left = strokeWidth / 2
+                                        , right = strokeWidth / 2
+                                        , top = strokeWidth / 2
+                                        , bottom = strokeWidth / 2
+                                        }
+                        in
+                        sizedSvgStack []
+                            [ sizedSvgRoundedRect
+                                [ domModifierFillUniform variableBackgroundColor
                                 ]
+                                { width = variableNameTextInputSvg.width
+                                , height = variableNameTextInputSvg.height
+                                , radius = strokeWidth
+                                }
+                            , variableNameTextInputSvg
                             ]
 
             createEntryKeySvg : SizedSvg State
@@ -1749,54 +1821,131 @@ interface state =
                                 ]
 
                     Editing entryKey ->
-                        svgSizedHorizontalCentered
-                            [ unselectableTextSvg "+"
-                                |> sizedSvgPad
-                                    { left = 0
-                                    , right = fontWidth * 2
-                                    , top = 0
-                                    , bottom = 0
-                                    }
-                            , let
-                                variableNameTextInputSvg : SizedSvg State
-                                variableNameTextInputSvg =
-                                    svgSizedTextInput entryKey
-                                        |> sizedSvgFutureMap
-                                            (\future ->
-                                                { state
-                                                    | createEntryKey = future
-                                                }
-                                            )
-                                        |> sizedSvgPad
-                                            { left = strokeWidth / 2
-                                            , right = strokeWidth / 2
-                                            , top = strokeWidth / 2
-                                            , bottom = strokeWidth / 2
+                        let
+                            variableNameTextInputSvg : SizedSvg State
+                            variableNameTextInputSvg =
+                                svgSizedTextInput entryKey
+                                    |> sizedSvgFutureMap
+                                        (\future ->
+                                            { state
+                                                | createEntryKey = future
+                                            }
+                                        )
+                                    |> sizedSvgPad
+                                        { left = strokeWidth / 2
+                                        , right = strokeWidth / 2
+                                        , top = strokeWidth / 2
+                                        , bottom = strokeWidth / 2
+                                        }
+
+                            valueLookupContentSvg : SizedSvg State
+                            valueLookupContentSvg =
+                                svgSizedHorizontalCentered
+                                    [ variableNameTextInputSvg
+                                    , valueHoleShapeSvg valueLookupBackgroundColor
+                                    ]
+                        in
+                        sizedSvgStack []
+                            [ sizedSvgRoundedRect
+                                [ domModifierFillUniform valueLookupBackgroundColor
+                                ]
+                                { width = valueLookupContentSvg.width
+                                , height = valueLookupContentSvg.height
+                                , radius = strokeWidth
+                                }
+                            , valueLookupContentSvg
+                            ]
+
+            createRelationDefinitionSvg : SizedSvg State
+            createRelationDefinitionSvg =
+                let
+                    identifierTextInputSvg : SizedSvg State
+                    identifierTextInputSvg =
+                        svgSizedTextInput state.createRelationIdentifier
+                            |> sizedSvgFutureMap
+                                (\future ->
+                                    case future of
+                                        Editing editing ->
+                                            { state
+                                                | createRelationIdentifier = editing
                                             }
 
-                                valueLookupContentSvg : SizedSvg State
-                                valueLookupContentSvg =
-                                    svgSizedHorizontalCentered
-                                        [ variableNameTextInputSvg
-                                        , valueHoleShapeSvg valueLookupBackgroundColor
-                                        ]
-                              in
-                              sizedSvgStack []
-                                [ sizedSvgRoundedRect
-                                    [ domModifierFillUniform valueLookupBackgroundColor
-                                    ]
-                                    { width = valueLookupContentSvg.width
-                                    , height = valueLookupContentSvg.height
-                                    , radius = strokeWidth
-                                    }
-                                , valueLookupContentSvg
-                                ]
-                            ]
+                                        DoneEditing newIdentifier ->
+                                            { state
+                                                | createRelationIdentifier = ""
+                                                , relationDefinitionShown =
+                                                    { identifier = newIdentifier
+                                                    , parameter = Nothing
+                                                    , equivalentFact = Nothing
+                                                    }
+                                                , relationDefinitionsNotShown =
+                                                    state.relationDefinitionsNotShown
+                                                        |> FastDict.insert state.relationDefinitionShown.identifier
+                                                            { parameter = state.relationDefinitionShown.parameter
+                                                            , equivalentFact = state.relationDefinitionShown.equivalentFact
+                                                            }
+                                            }
+                                )
+                in
+                relationDefinitionSvgWithInteractivity
+                    { identifier = identifierTextInputSvg
+                    , parameter =
+                        valueHoleShapeSvg relationBackgroundColor
+                    , equivalentFact =
+                        factInsertHoleShapeSvg relationBackgroundColor
+                    }
 
             sidebarContent : SizedSvg State
             sidebarContent =
                 svgSizedVertical
-                    [ createVariableSvg
+                    [ factNotShapeSvg Nothing
+                        |> List.singleton
+                        |> sizedSvgStack
+                            [ domListenToPointerDown
+                                |> Web.Dom.modifierFutureMap
+                                    (\pointer ->
+                                        { state
+                                            | dragged =
+                                                Just
+                                                    { x = pointer.x
+                                                    , y = pointer.y
+                                                    , block = BlockFact (Not Nothing)
+                                                    }
+                                        }
+                                    )
+                            ]
+                    , factAllShapeSvg []
+                        |> List.singleton
+                        |> sizedSvgStack
+                            [ domListenToPointerDown
+                                |> Web.Dom.modifierFutureMap
+                                    (\pointer ->
+                                        { state
+                                            | dragged =
+                                                Just
+                                                    { x = pointer.x
+                                                    , y = pointer.y
+                                                    , block = BlockFact (All [])
+                                                    }
+                                        }
+                                    )
+                            ]
+                    , factAnyShapeSvg []
+                        |> List.singleton
+                        |> sizedSvgStack
+                            [ domListenToPointerDown
+                                |> Web.Dom.modifierFutureMap
+                                    (\pointer ->
+                                        { state
+                                            | dragged =
+                                                Just
+                                                    { x = pointer.x
+                                                    , y = pointer.y
+                                                    , block = BlockFact (Any [])
+                                                    }
+                                        }
+                                    )
+                            ]
                         |> sizedSvgPad
                             { left = 0
                             , right = 0
@@ -1808,36 +1957,21 @@ interface state =
                             { left = 0
                             , right = 0
                             , top = 0
-                            , bottom = strokeWidth * 2
+                            , bottom = 0
                             }
-                    , sidebarBlocks
-                        |> sizedSvgFutureMap
-                            (\draggedState -> { state | dragged = Just draggedState })
-                    ]
-                    |> sizedSvgPad
-                        { left = strokeWidth
-                        , right = strokeWidth
-                        , top = strokeWidth * 2
-                        , bottom = 0
-                        }
-
-            sidebarBlocks :
-                SizedSvg
-                    { x : Float
-                    , y : Float
-                    , block : BlockUiState
-                    }
-            sidebarBlocks =
-                svgSizedVertical
-                    [ valueLookupShapeSvg []
+                    , valueLookupShapeSvg []
                         |> List.singleton
                         |> sizedSvgStack
                             [ domListenToPointerDown
                                 |> Web.Dom.modifierFutureMap
                                     (\pointer ->
-                                        { x = pointer.x
-                                        , y = pointer.y
-                                        , block = BlockValue (ValueLookup [])
+                                        { state
+                                            | dragged =
+                                                Just
+                                                    { x = pointer.x
+                                                    , y = pointer.y
+                                                    , block = BlockValue (ValueLookup [])
+                                                    }
                                         }
                                     )
                             ]
@@ -1845,7 +1979,7 @@ interface state =
                             { left = 0
                             , right = 0
                             , top = 0
-                            , bottom = strokeWidth
+                            , bottom = 0
                             }
                     , Set.union (state.relationDefinitionShown |> relationDefinitionEntryKeys)
                         (state.relationDefinitionsNotShown
@@ -1867,9 +2001,13 @@ interface state =
                                         [ domListenToPointerDown
                                             |> Web.Dom.modifierFutureMap
                                                 (\pointer ->
-                                                    { x = pointer.x
-                                                    , y = pointer.y
-                                                    , block = BlockValue (ValueLookup [ { key = entryKey, value = Nothing } ])
+                                                    { state
+                                                        | dragged =
+                                                            Just
+                                                                { x = pointer.x
+                                                                , y = pointer.y
+                                                                , block = BlockValue (ValueLookup [ { key = entryKey, value = Nothing } ])
+                                                                }
                                                     }
                                                 )
                                         ]
@@ -1880,6 +2018,13 @@ interface state =
                             , right = 0
                             , top = 0
                             , bottom = strokeWidth
+                            }
+                    , createVariableSvg
+                        |> sizedSvgPad
+                            { left = 0
+                            , right = 0
+                            , top = 0
+                            , bottom = 0
                             }
                     , let
                         variables : Set String
@@ -1896,9 +2041,13 @@ interface state =
                                         [ domListenToPointerDown
                                             |> Web.Dom.modifierFutureMap
                                                 (\pointer ->
-                                                    { x = pointer.x
-                                                    , y = pointer.y
-                                                    , block = BlockValue (Variable availableVariable)
+                                                    { state
+                                                        | dragged =
+                                                            Just
+                                                                { x = pointer.x
+                                                                , y = pointer.y
+                                                                , block = BlockValue (Variable availableVariable)
+                                                                }
                                                     }
                                                 )
                                         ]
@@ -1907,79 +2056,30 @@ interface state =
                         |> sizedSvgPad
                             { left = 0
                             , right = 0
-                            , bottom = strokeWidth / 2
+                            , bottom = strokeWidth
                             , top = 0
                             }
-                    , factNotShapeSvg Nothing
+                    , createRelationDefinitionSvg
                         |> sizedSvgPad
                             { left = 0
                             , right = 0
                             , top = 0
-                            , bottom = strokeWidth
+                            , bottom = 0
                             }
-                        |> List.singleton
-                        |> sizedSvgStack
-                            [ domListenToPointerDown
-                                |> Web.Dom.modifierFutureMap
-                                    (\pointer ->
-                                        { x = pointer.x
-                                        , y = pointer.y
-                                        , block = BlockFact (Not Nothing)
-                                        }
-                                    )
-                            ]
-                    , factAllShapeSvg []
-                        |> sizedSvgPad
-                            { left = 0
-                            , right = 0
-                            , top = 0
-                            , bottom = strokeWidth
-                            }
-                        |> List.singleton
-                        |> sizedSvgStack
-                            [ domListenToPointerDown
-                                |> Web.Dom.modifierFutureMap
-                                    (\pointer ->
-                                        { x = pointer.x
-                                        , y = pointer.y
-                                        , block = BlockFact (All [])
-                                        }
-                                    )
-                            ]
-                    , factAnyShapeSvg []
-                        |> sizedSvgPad
-                            { left = 0
-                            , right = 0
-                            , top = 0
-                            , bottom = strokeWidth
-                            }
-                        |> List.singleton
-                        |> sizedSvgStack
-                            [ domListenToPointerDown
-                                |> Web.Dom.modifierFutureMap
-                                    (\pointer ->
-                                        { x = pointer.x
-                                        , y = pointer.y
-                                        , block = BlockFact (Any [])
-                                        }
-                                    )
-                            ]
                     , factEqualsShapeSvg { a = Nothing, b = Nothing }
-                        |> sizedSvgPad
-                            { left = 0
-                            , right = 0
-                            , top = 0
-                            , bottom = strokeWidth
-                            }
                         |> List.singleton
                         |> sizedSvgStack
                             [ domListenToPointerDown
                                 |> Web.Dom.modifierFutureMap
                                     (\pointer ->
-                                        { x = pointer.x
-                                        , y = pointer.y
-                                        , block =
-                                            BlockFact (Equal { a = Nothing, b = Nothing })
+                                        { state
+                                            | dragged =
+                                                Just
+                                                    { x = pointer.x
+                                                    , y = pointer.y
+                                                    , block =
+                                                        BlockFact (Equal { a = Nothing, b = Nothing })
+                                                    }
                                         }
                                     )
                             ]
@@ -2005,21 +2105,31 @@ interface state =
                                         [ domListenToPointerDown
                                             |> Web.Dom.modifierFutureMap
                                                 (\pointer ->
-                                                    { x = pointer.x
-                                                    , y = pointer.y
-                                                    , block =
-                                                        BlockFact
-                                                            (RelationUse
-                                                                { identifier = relationIdentifier
-                                                                , argument = Nothing
+                                                    { state
+                                                        | dragged =
+                                                            Just
+                                                                { x = pointer.x
+                                                                , y = pointer.y
+                                                                , block =
+                                                                    BlockFact
+                                                                        (RelationUse
+                                                                            { identifier = relationIdentifier
+                                                                            , argument = Nothing
+                                                                            }
+                                                                        )
                                                                 }
-                                                            )
                                                     }
                                                 )
                                         ]
                             )
                         |> svgSizedVertical
                     ]
+                    |> sizedSvgPad
+                        { left = strokeWidth
+                        , right = strokeWidth
+                        , top = strokeWidth * 2
+                        , bottom = 0
+                        }
           in
           domSvgContainer
             { left = 0
@@ -2228,6 +2338,18 @@ interface state =
         |> Web.interfaceBatch
 
 
+relationDefinitionEntryKeys :
+    { identifier : String
+    , parameter : Maybe ValueUiState
+    , equivalentFact : Maybe FactUiState
+    }
+    -> Set String
+relationDefinitionEntryKeys =
+    \relationDefinition ->
+        Set.union (relationDefinition.parameter |> maybeValueEntryKeys)
+            (relationDefinition.equivalentFact |> maybeFactEntryKeys)
+
+
 relationDefinitionVariables :
     { identifier : String
     , parameter : Maybe ValueUiState
@@ -2274,7 +2396,10 @@ svgSizedTextInput currentString =
                 [ Web.Dom.attribute "type" "text"
                 , Web.Dom.style "background-color" "transparent"
                 , Web.Dom.style "color" "inherit"
-                , Web.Dom.style "border" "none"
+                , Web.Dom.style "border-left" "none"
+                , Web.Dom.style "border-right" "none"
+                , Web.Dom.style "border-top" "none"
+                , Web.Dom.style "border-bottom" "dotted 2px"
                 , Web.Dom.style "font-size" "1em"
                 , Web.Dom.stringProperty "value" currentString
                 , Web.Dom.listenTo "input"
@@ -2375,134 +2500,46 @@ relationDefinitionSvg :
                 }
             }
 relationDefinitionSvg dragState definition =
-    let
-        spaceWidth : Float
-        spaceWidth =
-            fontWidth
-
-        parameterSvg : SizedSvg { dragged : DragState, value : Maybe ValueUiState }
-        parameterSvg =
+    relationDefinitionSvgWithInteractivity
+        { identifier = unselectableTextSvg definition.identifier
+        , parameter =
             valueOrHoleSvg relationBackgroundColor dragState definition.parameter
-
-        nameSvg : SizedSvg future_
-        nameSvg =
-            unselectableTextSvg definition.identifier
-
-        equalsTextSvg : SizedSvg future_
-        equalsTextSvg =
-            unselectableTextSvg "="
-
-        headerWidth : Float
-        headerWidth =
-            strokeWidth
-                + nameSvg.width
-                + spaceWidth
-                + parameterSvg.width
-                + spaceWidth
-                + equalsTextSvg.width
-                + strokeWidth
-
-        fullWidth : Float
-        fullWidth =
-            headerWidth + equivalentFactSvg.width
-
-        equivalentFactSvg : SizedSvg { dragged : DragState, fact : Maybe FactUiState }
-        equivalentFactSvg =
+                |> sizedSvgFutureMap
+                    (\futureArgumentUiState ->
+                        { dragged = futureArgumentUiState.dragged
+                        , relationDefinition =
+                            { identifier = definition.identifier
+                            , equivalentFact = definition.equivalentFact
+                            , parameter = futureArgumentUiState.value
+                            }
+                        }
+                    )
+        , equivalentFact =
             factOrHoleSvg relationBackgroundColor dragState definition.equivalentFact
-
-        headerContent :
-            SizedSvg
-                { dragged : DragState
-                , relationDefinition :
-                    { identifier : String
-                    , equivalentFact : Maybe FactUiState
-                    , parameter : Maybe ValueUiState
-                    }
-                }
-        headerContent =
-            svgSizedHorizontalCentered
-                [ nameSvg
-                    |> sizedSvgPad
-                        { left = 0
-                        , right = spaceWidth
-                        , top = strokeWidth / 2
-                        , bottom = strokeWidth / 2
-                        }
-                , parameterSvg
-                    |> sizedSvgFutureMap
-                        (\futureArgumentUiState ->
-                            { dragged = futureArgumentUiState.dragged
-                            , relationDefinition =
-                                { identifier = definition.identifier
-                                , equivalentFact = definition.equivalentFact
-                                , parameter = futureArgumentUiState.value
-                                }
+                |> sizedSvgFutureMap
+                    (\equivalentFactUiState ->
+                        { dragged = equivalentFactUiState.dragged
+                        , relationDefinition =
+                            { identifier = definition.identifier
+                            , equivalentFact = equivalentFactUiState.fact
+                            , parameter = definition.parameter
                             }
-                        )
-                , equalsTextSvg
-                    |> sizedSvgPad
-                        { left = spaceWidth
-                        , right = 0
-                        , top = strokeWidth / 2
-                        , bottom = strokeWidth / 2
                         }
-                ]
+                    )
+        }
 
-        fullHeight : Float
-        fullHeight =
-            Basics.max headerContent.height equivalentFactSvg.height
 
-        shapeSvg : SizedSvg future_
-        shapeSvg =
-            svgPolygon
-                [ domModifierFillUniform relationBackgroundColor
-                ]
-                [ ( 0, 0 )
-                , ( headerWidth, 0 )
-                , ( fullWidth, 0 )
-                , ( fullWidth, (fullHeight - equivalentFactSvg.height) / 2 )
-                , ( headerWidth, (fullHeight - equivalentFactSvg.height) / 2 + strokeWidth )
-                , ( headerWidth, fullHeight - (fullHeight - equivalentFactSvg.height) / 2 - strokeWidth )
-                , ( fullWidth, fullHeight - (fullHeight - equivalentFactSvg.height) / 2 )
-                , ( fullWidth, fullHeight )
-                , ( headerWidth, fullHeight )
-                , ( 0, fullHeight )
-                ]
-    in
-    { height = fullHeight
-    , width = fullWidth
-    , svg =
-        svgStack
-            []
-            [ shapeSvg.svg
-            , svgStack
-                [ svgAttributeTranslate
-                    { x = strokeWidth
-                    , y = 0
-                    }
-                ]
-                [ headerContent.svg ]
-            , svgStack
-                [ svgAttributeTranslate
-                    { x = headerWidth
-                    , y = (fullHeight - equivalentFactSvg.height) / 2
-                    }
-                ]
-                [ equivalentFactSvg
-                    |> sizedSvgFutureMap
-                        (\equivalentFactUiState ->
-                            { dragged = equivalentFactUiState.dragged
-                            , relationDefinition =
-                                { identifier = definition.identifier
-                                , equivalentFact = equivalentFactUiState.fact
-                                , parameter = definition.parameter
-                                }
-                            }
-                        )
-                    |> .svg
-                ]
-            ]
-    }
+fastDictSetFlatMap :
+    (comparableDictKey -> value -> Set comparableSetElement)
+    -> (FastDict.Dict comparableDictKey value -> Set comparableSetElement)
+fastDictSetFlatMap entryToSet =
+    \dict ->
+        dict
+            |> FastDict.foldl
+                (\key value soFar ->
+                    Set.union (entryToSet key value) soFar
+                )
+                Set.empty
 
 
 type alias SizedSvg future =
@@ -2764,19 +2801,6 @@ blockVerticalFactListShapeSvg config =
                 [ elementsSvg.svg ]
             ]
     }
-
-
-fastDictSetFlatMap :
-    (comparableDictKey -> value -> Set comparableSetElement)
-    -> (FastDict.Dict comparableDictKey value -> Set comparableSetElement)
-fastDictSetFlatMap entryToSet =
-    \dict ->
-        dict
-            |> FastDict.foldl
-                (\key value soFar ->
-                    Set.union (entryToSet key value) soFar
-                )
-                Set.empty
 
 
 port toJs : Json.Encode.Value -> Cmd event_
