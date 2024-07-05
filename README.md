@@ -25,11 +25,11 @@ Reduces things you need to know and keep in your mind.
           - variable renaming
           - value lookup entry key renaming
           - relation renaming
-          - switching relation definition
+          - navigating to relation definition
       - evaluation frame
       - relation definition deleting
 
-![screenshot of the in-progress ui](https://github.com/lue-bird/lau/assets/81869893/667902e2-f228-4d4e-9b3e-0801e95f2fe9)
+![screenshot of the in-progress ui](https://github.com/lue-bird/lau/assets/81869893/0cfc0399-9acb-4c1c-a2e7-e0dd7a7ca979)
 
 ## web
 run locally with

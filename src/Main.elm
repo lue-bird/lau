@@ -409,6 +409,28 @@ svgClosedPath modifiers segments =
         []
 
 
+svgOpenPath :
+    List (Web.Dom.Modifier future)
+    -> { start : { x : Float, y : Float }, trail : List Svg.PathD.Segment }
+    -> Web.Dom.Node future
+svgOpenPath modifiers segments =
+    Web.Svg.element "path"
+        (Web.Dom.attribute "d"
+            (Svg.PathD.pathD
+                (case segments.trail of
+                    [] ->
+                        []
+
+                    trailSegment0 :: trailSegment1Up ->
+                        Svg.PathD.M ( segments.start.x, segments.start.y )
+                            :: (trailSegment0 :: trailSegment1Up)
+                )
+            )
+            :: modifiers
+        )
+        []
+
+
 pathDArc :
     { centerX : Float
     , centerY : Float
@@ -533,18 +555,27 @@ fontWidth =
     fontSize * 0.42
 
 
-unselectableTextSvg : String -> SizedSvg future_
-unselectableTextSvg string =
+sizedSvgUnselectableText : String -> SizedSvg future_
+sizedSvgUnselectableText string =
+    sizedSvgText
+        [ Web.Dom.style "user-select" "none"
+        , Web.Dom.style "pointer-events" "none"
+        ]
+        string
+
+
+sizedSvgText : List (Web.Dom.Modifier future) -> String -> SizedSvg future
+sizedSvgText modifiers string =
     { height = fontSize
     , width = (string |> String.length |> Basics.toFloat) * fontWidth
     , svg =
         Web.Svg.element "text"
-            [ Web.Dom.style "user-select" "none"
-            , Web.Dom.style "pointer-events" "none"
-            , Web.Dom.attribute "x" (0 |> String.fromFloat)
-            , Web.Dom.attribute "y" (fontBaseline * fontSize |> String.fromFloat)
-            , domModifierFillUniform (Color.rgb 1 1 1)
-            ]
+            ([ Web.Dom.attribute "x" (0 |> String.fromFloat)
+             , Web.Dom.attribute "y" (fontBaseline * fontSize |> String.fromFloat)
+             , domModifierFillUniform (Color.rgb 1 1 1)
+             ]
+                ++ modifiers
+            )
             [ Web.Dom.text string ]
     }
 
@@ -593,8 +624,8 @@ sizedSvgPad additionalPadding =
         }
 
 
-svgSizedHorizontalCentered : List (SizedSvg future) -> SizedSvg future
-svgSizedHorizontalCentered elements =
+sizedSvgHorizontalCentered : List (SizedSvg future) -> SizedSvg future
+sizedSvgHorizontalCentered elements =
     let
         fullHeight : Float
         fullHeight =
@@ -632,11 +663,11 @@ relationBackgroundColor =
     Color.rgb 0.22 0.14 0
 
 
-svgPolygon :
+sizedSvgPolygon :
     List (Web.Dom.Modifier future)
     -> List ( Float, Float )
     -> SizedSvg future
-svgPolygon modifiers points =
+sizedSvgPolygon modifiers points =
     let
         xMinimum : Float
         xMinimum =
@@ -690,11 +721,11 @@ factEqualsSvgWithInteractivity parts =
 
         equalsTextSvg : SizedSvg future_
         equalsTextSvg =
-            unselectableTextSvg "="
+            sizedSvgUnselectableText "="
 
         contentSvg : SizedSvg future
         contentSvg =
-            svgSizedHorizontalCentered
+            sizedSvgHorizontalCentered
                 [ parts.valueASvg
                 , equalsTextSvg
                     |> sizedSvgPad
@@ -708,7 +739,7 @@ factEqualsSvgWithInteractivity parts =
 
         shapeSvg : SizedSvg future
         shapeSvg =
-            svgPolygon
+            sizedSvgPolygon
                 [ domModifierFillUniform relationBackgroundColor
                 , parts.shapeEventListenModifier
                 ]
@@ -748,8 +779,8 @@ factEqualsShapeSvg toEquate =
 
 relationUseSvgWithInteractivity :
     { shapeEventListenModifier : Web.Dom.Modifier future
-    , identifier : String
-    , argumentAsSvg : SizedSvg future
+    , identifier : SizedSvg future
+    , argumentSvg : SizedSvg future
     }
     -> SizedSvg future
 relationUseSvgWithInteractivity parts =
@@ -758,21 +789,17 @@ relationUseSvgWithInteractivity parts =
         spaceWidth =
             fontWidth
 
-        identifierTextSvg : SizedSvg future_
-        identifierTextSvg =
-            unselectableTextSvg parts.identifier
-
         contentSvg : SizedSvg future
         contentSvg =
-            svgSizedHorizontalCentered
-                [ identifierTextSvg
+            sizedSvgHorizontalCentered
+                [ parts.identifier
                     |> sizedSvgPad
                         { top = strokeWidth / 2
                         , bottom = strokeWidth / 2
                         , left = 0
                         , right = spaceWidth
                         }
-                , parts.argumentAsSvg
+                , parts.argumentSvg
                 ]
 
         fullWidth : Float
@@ -781,7 +808,7 @@ relationUseSvgWithInteractivity parts =
 
         shapeSvg : SizedSvg future
         shapeSvg =
-            svgPolygon
+            sizedSvgPolygon
                 [ domModifierFillUniform relationBackgroundColor
                 , parts.shapeEventListenModifier
                 ]
@@ -814,8 +841,8 @@ relationUseShapeSvg : { identifier : String, argument : Maybe ValueUiState } -> 
 relationUseShapeSvg relationUse =
     relationUseSvgWithInteractivity
         { shapeEventListenModifier = Web.Dom.modifierNone
-        , identifier = relationUse.identifier
-        , argumentAsSvg =
+        , identifier = sizedSvgUnselectableText relationUse.identifier
+        , argumentSvg =
             valueOrHoleShapeSvg relationBackgroundColor relationUse.argument
         }
 
@@ -864,7 +891,7 @@ factInsertHoleShapeSvg backgroundColor =
         fullHeight =
             strokeWidth + strokeWidth
     in
-    svgPolygon
+    sizedSvgPolygon
         [ domModifierFillUniform
             (backgroundColor |> colorBrightnessScaleBy missingThingBrightnessScale)
         ]
@@ -1002,7 +1029,7 @@ factNotSvgWithInteractivity parts =
 
         notTextSvg : SizedSvg future_
         notTextSvg =
-            unselectableTextSvg "not"
+            sizedSvgUnselectableText "not"
 
         fullHeight : Float
         fullHeight =
@@ -1011,7 +1038,7 @@ factNotSvgWithInteractivity parts =
 
         shapeSvg : SizedSvg future
         shapeSvg =
-            svgPolygon
+            sizedSvgPolygon
                 [ domModifierFillUniform factNotBackgroundColor
                 , parts.shapeListenModifier
                 ]
@@ -1099,9 +1126,9 @@ valueLookupEntryContentSvg =
         let
             entryNameSvg : SizedSvg future_
             entryNameSvg =
-                unselectableTextSvg entry.key
+                sizedSvgUnselectableText entry.key
         in
-        svgSizedHorizontalCentered
+        sizedSvgHorizontalCentered
             [ entryNameSvg
                 |> sizedSvgPad
                     { left = strokeWidth / 2
@@ -1171,30 +1198,37 @@ variableBackgroundColor =
 
 
 variableShapeSvg : String -> SizedSvg future_
-variableShapeSvg =
-    \variableName ->
-        let
-            nameSvg : SizedSvg future_
-            nameSvg =
-                unselectableTextSvg variableName
-                    |> sizedSvgPad
-                        { left = strokeWidth / 2
-                        , right = strokeWidth / 2
-                        , top = strokeWidth / 2
-                        , bottom = strokeWidth / 2
-                        }
+variableShapeSvg variableName =
+    variableSvgWithInteractivity
+        { dragStart = Web.Dom.modifierNone
+        , variableNameSvg =
+            sizedSvgUnselectableText variableName
+                |> sizedSvgPad
+                    { left = strokeWidth / 2
+                    , right = strokeWidth / 2
+                    , top = strokeWidth / 2
+                    , bottom = strokeWidth / 2
+                    }
+        }
 
-            backgroundSvg : SizedSvg future_
-            backgroundSvg =
-                sizedSvgRoundedRect
-                    [ domModifierFillUniform variableBackgroundColor
-                    ]
-                    { radius = strokeWidth, width = nameSvg.width, height = nameSvg.height }
-        in
-        sizedSvgStack []
-            [ backgroundSvg
-            , nameSvg
+
+variableSvgWithInteractivity :
+    { dragStart : Web.Dom.Modifier future
+    , variableNameSvg : SizedSvg future
+    }
+    -> SizedSvg future
+variableSvgWithInteractivity interactivity =
+    sizedSvgStack []
+        [ sizedSvgRoundedRect
+            [ domModifierFillUniform variableBackgroundColor
+            , interactivity.dragStart
             ]
+            { width = interactivity.variableNameSvg.width
+            , height = interactivity.variableNameSvg.height
+            , radius = strokeWidth
+            }
+        , interactivity.variableNameSvg
+        ]
 
 
 valueSvg :
@@ -1524,8 +1558,8 @@ factSvg dragState fact =
                                 , fact = Nothing
                                 }
                             )
-                , identifier = relationUse.identifier
-                , argumentAsSvg =
+                , identifier = sizedSvgUnselectableText relationUse.identifier
+                , argumentSvg =
                     case relationUse.argument of
                         Nothing ->
                             valueHoleSvg relationBackgroundColor dragState
@@ -1641,88 +1675,19 @@ relationDefinitionSvgWithInteractivity :
     }
     -> SizedSvg future
 relationDefinitionSvgWithInteractivity definition =
-    let
-        equalsTextSvg : SizedSvg future_
-        equalsTextSvg =
-            unselectableTextSvg "="
-
-        headerWidth : Float
-        headerWidth =
-            (strokeWidth / 2)
-                + definition.identifier.width
-                + fontWidth
-                + definition.parameter.width
-                + fontWidth
-                + equalsTextSvg.width
-                + (strokeWidth / 2)
-
-        fullWidth : Float
-        fullWidth =
-            headerWidth + definition.equivalentFact.width
-
-        headerContent : SizedSvg future
-        headerContent =
-            svgSizedHorizontalCentered
-                [ definition.identifier
-                    |> sizedSvgPad
-                        { left = 0
-                        , right = fontWidth
-                        , top = strokeWidth / 2
-                        , bottom = strokeWidth / 2
-                        }
-                , definition.parameter
-                , equalsTextSvg
-                    |> sizedSvgPad
-                        { left = fontWidth
-                        , right = 0
-                        , top = strokeWidth / 2
-                        , bottom = strokeWidth / 2
-                        }
-                ]
-
-        fullHeight : Float
-        fullHeight =
-            Basics.max headerContent.height definition.equivalentFact.height
-
-        shapeSvg : SizedSvg future_
-        shapeSvg =
-            svgPolygon
-                [ domModifierFillUniform relationBackgroundColor
-                ]
-                [ ( 0, 0 )
-                , ( headerWidth, 0 )
-                , ( fullWidth, 0 )
-                , ( fullWidth, (fullHeight - definition.equivalentFact.height) / 2 )
-                , ( headerWidth, (fullHeight - definition.equivalentFact.height) / 2 + strokeWidth )
-                , ( headerWidth, fullHeight - (fullHeight - definition.equivalentFact.height) / 2 - strokeWidth )
-                , ( fullWidth, fullHeight - (fullHeight - definition.equivalentFact.height) / 2 )
-                , ( fullWidth, fullHeight )
-                , ( headerWidth, fullHeight )
-                , ( 0, fullHeight )
-                ]
-    in
-    { height = fullHeight
-    , width = fullWidth
-    , svg =
-        svgStack
-            []
-            [ shapeSvg.svg
-            , svgStack
-                [ svgAttributeTranslate
-                    { x = strokeWidth / 2
-                    , y = 0
-                    }
-                ]
-                [ headerContent.svg ]
-            , svgStack
-                [ svgAttributeTranslate
-                    { x = headerWidth
-                    , y = (fullHeight - definition.equivalentFact.height) / 2
-                    }
-                ]
-                [ definition.equivalentFact.svg ]
-            ]
-    }
+    svgSizedVertical
+        [ relationUseSvgWithInteractivity
+            { shapeEventListenModifier = Web.Dom.modifierNone
+            , identifier = definition.identifier
+            , argumentSvg = definition.parameter
+            }
+            |> sizedSvgPad
+                { left = 0, right = 0, top = 0, bottom = strokeWidth }
+        , sizedSvgUnselectableText "is equivalent to"
+            |> sizedSvgPad
+                { left = 0, right = 0, top = 0, bottom = strokeWidth }
+        , definition.equivalentFact
+        ]
 
 
 interface : State -> Web.Interface State
@@ -1744,40 +1709,54 @@ interface state =
         , Web.Dom.style "right" "0"
         , Web.Dom.style "bottom" "0"
         , Web.Dom.style "left" "0"
+        , case state.dragged of
+            Nothing ->
+                Web.Dom.modifierNone
+
+            Just _ ->
+                Web.Dom.style "cursor" "grabbing"
         ]
         [ let
             createVariableSvg : SizedSvg State
             createVariableSvg =
                 case state.createVariable of
                     DoneEditing variableName ->
-                        variableShapeSvg variableName
-                            |> List.singleton
-                            |> sizedSvgStack
-                                [ domListenToPointerDown
-                                    |> Web.Dom.modifierFutureMap
-                                        (\pointer ->
-                                            { state
-                                                | createVariable = Editing ""
-                                                , dragged =
-                                                    Just
-                                                        { x = pointer.x
-                                                        , y = pointer.y
-                                                        , block = BlockValue (Variable variableName)
-                                                        }
+                        sizedSvgHorizontalCentered
+                            [ variableSvgWithInteractivity
+                                { variableNameSvg =
+                                    sizedSvgUnselectableText variableName
+                                        |> sizedSvgPad
+                                            { left = strokeWidth / 2
+                                            , right = strokeWidth / 2
+                                            , top = strokeWidth / 2
+                                            , bottom = strokeWidth / 2
                                             }
-                                        )
-                                ]
+                                , dragStart =
+                                    domListenToPointerDown
+                                        |> Web.Dom.modifierFutureMap
+                                            (\pointer ->
+                                                { state
+                                                    | createVariable = Editing ""
+                                                    , dragged =
+                                                        Just
+                                                            { x = pointer.x
+                                                            , y = pointer.y
+                                                            , block = BlockValue (Variable variableName)
+                                                            }
+                                                }
+                                            )
+                                }
+                            , sizedSvgRenameButton
+                                |> sizedSvgFutureMap (\() -> { state | createVariable = Editing variableName })
+                            ]
 
                     Editing variableName ->
-                        let
-                            variableNameTextInputSvg : SizedSvg State
-                            variableNameTextInputSvg =
+                        variableSvgWithInteractivity
+                            { variableNameSvg =
                                 svgSizedTextInput variableName
                                     |> sizedSvgFutureMap
                                         (\future ->
-                                            { state
-                                                | createVariable = future
-                                            }
+                                            { state | createVariable = future }
                                         )
                                     |> sizedSvgPad
                                         { left = strokeWidth / 2
@@ -1785,40 +1764,35 @@ interface state =
                                         , top = strokeWidth / 2
                                         , bottom = strokeWidth / 2
                                         }
-                        in
-                        sizedSvgStack []
-                            [ sizedSvgRoundedRect
-                                [ domModifierFillUniform variableBackgroundColor
-                                ]
-                                { width = variableNameTextInputSvg.width
-                                , height = variableNameTextInputSvg.height
-                                , radius = strokeWidth
-                                }
-                            , variableNameTextInputSvg
-                            ]
+                            , dragStart = Web.Dom.modifierNone
+                            }
 
             createEntryKeySvg : SizedSvg State
             createEntryKeySvg =
                 case state.createEntryKey of
                     DoneEditing entryKey ->
-                        valueLookupShapeSvg
-                            [ { key = entryKey, value = Nothing } ]
-                            |> List.singleton
-                            |> sizedSvgStack
-                                [ domListenToPointerDown
-                                    |> Web.Dom.modifierFutureMap
-                                        (\pointer ->
-                                            { state
-                                                | createEntryKey = Editing ""
-                                                , dragged =
-                                                    Just
-                                                        { x = pointer.x
-                                                        , y = pointer.y
-                                                        , block = BlockValue (ValueLookup [ { key = entryKey, value = Nothing } ])
-                                                        }
-                                            }
-                                        )
-                                ]
+                        sizedSvgHorizontalCentered
+                            [ valueLookupShapeSvg
+                                [ { key = entryKey, value = Nothing } ]
+                                |> List.singleton
+                                |> sizedSvgStack
+                                    [ domListenToPointerDown
+                                        |> Web.Dom.modifierFutureMap
+                                            (\pointer ->
+                                                { state
+                                                    | createEntryKey = Editing ""
+                                                    , dragged =
+                                                        Just
+                                                            { x = pointer.x
+                                                            , y = pointer.y
+                                                            , block = BlockValue (ValueLookup [ { key = entryKey, value = Nothing } ])
+                                                            }
+                                                }
+                                            )
+                                    ]
+                            , sizedSvgRenameButton
+                                |> sizedSvgFutureMap (\() -> { state | createEntryKey = Editing entryKey })
+                            ]
 
                     Editing entryKey ->
                         let
@@ -1840,7 +1814,7 @@ interface state =
 
                             valueLookupContentSvg : SizedSvg State
                             valueLookupContentSvg =
-                                svgSizedHorizontalCentered
+                                sizedSvgHorizontalCentered
                                     [ variableNameTextInputSvg
                                     , valueHoleShapeSvg valueLookupBackgroundColor
                                     ]
@@ -1887,12 +1861,11 @@ interface state =
                                             }
                                 )
                 in
-                relationDefinitionSvgWithInteractivity
-                    { identifier = identifierTextInputSvg
-                    , parameter =
+                relationUseSvgWithInteractivity
+                    { shapeEventListenModifier = Web.Dom.modifierNone
+                    , identifier = identifierTextInputSvg
+                    , argumentSvg =
                         valueHoleShapeSvg relationBackgroundColor
-                    , equivalentFact =
-                        factInsertHoleShapeSvg relationBackgroundColor
                     }
 
             sidebarContent : SizedSvg State
@@ -1952,13 +1925,6 @@ interface state =
                             , top = 0
                             , bottom = strokeWidth
                             }
-                    , createEntryKeySvg
-                        |> sizedSvgPad
-                            { left = 0
-                            , right = 0
-                            , top = 0
-                            , bottom = 0
-                            }
                     , valueLookupShapeSvg []
                         |> List.singleton
                         |> sizedSvgStack
@@ -1975,12 +1941,7 @@ interface state =
                                         }
                                     )
                             ]
-                        |> sizedSvgPad
-                            { left = 0
-                            , right = 0
-                            , top = 0
-                            , bottom = 0
-                            }
+                    , createEntryKeySvg
                     , Set.union (state.relationDefinitionShown |> relationDefinitionEntryKeys)
                         (state.relationDefinitionsNotShown
                             |> fastDictSetFlatMap
@@ -2059,13 +2020,6 @@ interface state =
                             , bottom = strokeWidth
                             , top = 0
                             }
-                    , createRelationDefinitionSvg
-                        |> sizedSvgPad
-                            { left = 0
-                            , right = 0
-                            , top = 0
-                            , bottom = 0
-                            }
                     , factEqualsShapeSvg { a = Nothing, b = Nothing }
                         |> List.singleton
                         |> sizedSvgStack
@@ -2083,6 +2037,13 @@ interface state =
                                         }
                                     )
                             ]
+                    , createRelationDefinitionSvg
+                        |> sizedSvgPad
+                            { left = 0
+                            , right = 0
+                            , top = 0
+                            , bottom = 0
+                            }
                     , let
                         relationIdentifiers : Set String
                         relationIdentifiers =
@@ -2094,12 +2055,6 @@ interface state =
                         |> List.map
                             (\relationIdentifier ->
                                 relationUseShapeSvg { identifier = relationIdentifier, argument = Nothing }
-                                    |> sizedSvgPad
-                                        { left = 0
-                                        , right = 0
-                                        , top = 0
-                                        , bottom = strokeWidth
-                                        }
                                     |> List.singleton
                                     |> sizedSvgStack
                                         [ domListenToPointerDown
@@ -2362,6 +2317,58 @@ relationDefinitionVariables =
             (relationDefinition.parameter |> maybeValueVariables)
 
 
+sizedSvgRenameButton : SizedSvg ()
+sizedSvgRenameButton =
+    let
+        iconSvg : SizedSvg future
+        iconSvg =
+            --✎
+            sizedSvgText [] "🖍"
+                |> sizedSvgPad { left = fontWidth / 4, right = fontWidth / 4, top = 0, bottom = 0 }
+
+        underline :
+            List (Web.Dom.Modifier future)
+            -> { width : Float, height : Float, radius : Float }
+            -> { width : Float, height : Float, svg : Web.Dom.Node future }
+        underline modifiers geometry =
+            { width = geometry.width
+            , height = geometry.height
+            , svg =
+                svgOpenPath
+                    modifiers
+                    { start = { x = geometry.width + geometry.radius, y = geometry.height - geometry.radius }
+                    , trail =
+                        [ pathSegmentBottomRightQuarterArcCounterclockwise { radius = geometry.radius, end = { x = geometry.width, y = geometry.height } }
+                        , [ Svg.PathD.L ( 0, geometry.height ) ]
+                        , pathSegmentBottomLeftQuarterArcCounterclockwise { radius = geometry.radius, end = { x = -geometry.radius, y = geometry.height - geometry.radius } }
+                        ]
+                            |> List.concat
+                    }
+            }
+    in
+    sizedSvgStack
+        [ domListenToPointerDown |> Web.Dom.modifierFutureMap (\_ -> ())
+        , Web.Dom.style "cursor" "pointer"
+        ]
+        [ underline
+            [ Web.Dom.style "stroke" (Color.rgba 1 1 1 1 |> Color.toCssString)
+            , Web.Dom.style "stroke-width" "1px"
+            , domModifierFillUniform (Color.rgba 0 0 0 0)
+            ]
+            { width = iconSvg.width
+            , height = iconSvg.height
+            , radius = fontWidth
+            }
+        , iconSvg
+        ]
+        |> sizedSvgPad
+            { left = strokeWidth / 2
+            , right = strokeWidth / 2
+            , top = strokeWidth / 2
+            , bottom = strokeWidth / 2
+            }
+
+
 svgSizedTextInput : String -> SizedSvg TextInputUiState
 svgSizedTextInput currentString =
     let
@@ -2501,7 +2508,7 @@ relationDefinitionSvg :
             }
 relationDefinitionSvg dragState definition =
     relationDefinitionSvgWithInteractivity
-        { identifier = unselectableTextSvg definition.identifier
+        { identifier = sizedSvgUnselectableText definition.identifier
         , parameter =
             valueOrHoleSvg relationBackgroundColor dragState definition.parameter
                 |> sizedSvgFutureMap
@@ -2606,7 +2613,7 @@ blockVerticalFactListSvg config =
 
         blockNameStringSvg : SizedSvg future_
         blockNameStringSvg =
-            unselectableTextSvg config.name
+            sizedSvgUnselectableText config.name
 
         headerWidth : Float
         headerWidth =
@@ -2686,7 +2693,7 @@ blockVerticalFactListSvg config =
 
         shapeSvg : SizedSvg { dragged : DragState, elements : Maybe (List FactUiState) }
         shapeSvg =
-            svgPolygon
+            sizedSvgPolygon
                 [ domModifierFillUniform config.color
                 , domListenToPointerDown
                     |> Web.Dom.modifierFutureMap
@@ -2759,7 +2766,7 @@ blockVerticalFactListShapeSvg config =
 
         blockNameTextSvg : SizedSvg future_
         blockNameTextSvg =
-            unselectableTextSvg config.name
+            sizedSvgUnselectableText config.name
 
         headerHeight : Float
         headerHeight =
@@ -2771,7 +2778,7 @@ blockVerticalFactListShapeSvg config =
 
         shapeSvg : SizedSvg future_
         shapeSvg =
-            svgPolygon
+            sizedSvgPolygon
                 [ domModifierFillUniform config.color
                 ]
                 (verticalFactListPolygonPoints
