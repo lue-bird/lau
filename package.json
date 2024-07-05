@@ -1,7 +1,7 @@
 {
     "type": "module",
     "dependencies": {
-        "@lue-bird/elm-state-interface": "^2.0.0"
+        "@lue-bird/elm-state-interface": "^2.0.2"
     },
     "devDependencies": {
         "vite": "^5.1.2",
