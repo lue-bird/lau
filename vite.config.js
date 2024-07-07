@@ -1,8 +1,7 @@
 import { defineConfig } from "vite"
 import elm from "vite-plugin-elm"
-import fs from "node:fs"
 import eol2 from "elm-optimize-level-2"
-import { temporaryFile } from "tempy"
+import { devNull } from "node:os"
 
 export default defineConfig({
     plugins: [
@@ -11,12 +10,10 @@ export default defineConfig({
 })
 
 const compileWithEOL2 = async (targets) => {
-    const output = temporaryFile({ extension: 'elm' });
-    await eol2.run({
+    return await eol2.run({
         inputFilePath: targets,
-        outputFilePath: output,
+        outputFilePath: devNull,
         optimizeSpeed: true,
-        processOpts: { stdio: ['inherit', 'ignore', 'inherit'] },
+        processOpts: { stdio: ["inherit", "ignore", "inherit"] },
     })
-    return fs.readFileSync(output).toString()
 }
