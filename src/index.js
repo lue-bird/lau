@@ -1,4 +1,4 @@
-import * as Web from "@lue-bird/elm-state-interface"
+import * as Web from "@lue-bird/elm-state-interface-experimental"
 import { Elm } from "./Main.elm"
 
 const elmApp = Elm.Main.init()
