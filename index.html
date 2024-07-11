@@ -9,15 +9,23 @@
         body {
             margin: 0;
         }
+
+        @font-face {
+            font-family: Liga NovaMono;
+            src: url("LigaNovaMono.ttf");
+        }
+
+        input:first-line {
+            display: inline-block;
+        }
     </style>
+    <script src="./build/main.js"></script>
+    <script type="module" src="./src/index.js"></script>
 </head>
 
 <body>
     <main id="app">
     </main>
-
-    <script src="./build/main.js"></script>
-    <script type="module" src="./src/index.js"></script>
 </body>
 
 </html>

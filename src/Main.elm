@@ -332,7 +332,7 @@ initialState =
 
 fontSize : Float
 fontSize =
-    20
+    16
 
 
 strokeWidth : Float
@@ -552,7 +552,7 @@ valueOrHoleShapeSvg backgroundColor maybeValue =
 
 fontWidth : Float
 fontWidth =
-    fontSize * 0.42
+    fontSize * 0.56
 
 
 sizedSvgUnselectableText : String -> SizedSvg future_
@@ -566,8 +566,13 @@ sizedSvgUnselectableText string =
 
 sizedSvgText : List (Web.Dom.Modifier future) -> String -> SizedSvg future
 sizedSvgText modifiers string =
+    let
+        width : Float
+        width =
+            (string |> String.length |> Basics.toFloat) * fontWidth
+    in
     { height = fontSize
-    , width = (string |> String.length |> Basics.toFloat) * fontWidth
+    , width = width
     , svg =
         Web.Svg.element "text"
             ([ Web.Dom.attribute "x" (0 |> String.fromFloat)
@@ -2096,8 +2101,8 @@ interface state =
             , Web.Dom.attribute "height" ((state.windowWidth |> String.fromInt) ++ "px")
             , Web.Dom.style "display" "block"
             , Web.Dom.style "margin" "auto"
-            , Web.Dom.style "font-family" "monospace"
             , Web.Dom.style "font-size" (fontSize |> String.fromFloat)
+            , Web.Dom.style "font-family" "Liga NovaMono"
             , case state.dragged of
                 Nothing ->
                     Web.Dom.modifierNone
@@ -2372,10 +2377,14 @@ sizedSvgRenameButton =
 svgSizedTextInput : String -> SizedSvg TextInputUiState
 svgSizedTextInput currentString =
     let
+        characterCountSize : Int
+        characterCountSize =
+            (currentString |> String.length) + 2
+
         textInputWidth : Float
         textInputWidth =
             Basics.max (fontWidth * 10)
-                (fontWidth + fontWidth * (currentString |> String.length |> Basics.toFloat))
+                (fontWidth * (characterCountSize |> Basics.toFloat))
 
         textInputHeight : Float
         textInputHeight =
@@ -2394,65 +2403,81 @@ svgSizedTextInput currentString =
     , width = textInputWidth
     , svg =
         Web.Svg.element "foreignObject"
-            [ Web.Dom.attribute "x" "0"
-            , Web.Dom.attribute "y" "0"
-            , Web.Dom.attribute "width" (textInputWidth |> String.fromFloat)
-            , Web.Dom.attribute "height" (textInputHeight |> String.fromFloat)
+            [ Web.Dom.style "x" "0px"
+            , Web.Dom.style "y" "-2px"
+            , Web.Dom.style "width" ((textInputWidth |> String.fromFloat) ++ "px")
+            , Web.Dom.style "height" ((textInputHeight + 4 |> String.fromFloat) ++ "px")
             ]
-            [ Web.Dom.element "input"
-                [ Web.Dom.attribute "type" "text"
-                , Web.Dom.style "background-color" "transparent"
-                , Web.Dom.style "color" "inherit"
-                , Web.Dom.style "border-left" "none"
-                , Web.Dom.style "border-right" "none"
-                , Web.Dom.style "border-top" "none"
-                , Web.Dom.style "border-bottom" "dotted 2px"
-                , Web.Dom.style "font-size" "1em"
-                , Web.Dom.stringProperty "value" currentString
-                , Web.Dom.listenTo "input"
-                    |> Web.Dom.modifierFutureMap
-                        (\inputEventJson ->
-                            case
-                                inputEventJson
-                                    |> Json.Decode.decodeValue
-                                        (Json.Decode.field "target" (Json.Decode.field "value" Json.Decode.string))
-                            of
-                                Err _ ->
-                                    Editing currentString
-
-                                Ok newName ->
-                                    Editing newName
-                        )
-                , Web.Dom.listenTo "keydown"
-                    |> Web.Dom.modifierFutureMap
-                        (\keyDownEventJson ->
-                            case
-                                keyDownEventJson
-                                    |> Json.Decode.decodeValue
-                                        (let
-                                            enterKeyJsonDecode : Int -> Json.Decode.Decoder ()
-                                            enterKeyJsonDecode keyCode =
-                                                if keyCode == 13 then
-                                                    Json.Decode.succeed ()
-
-                                                else
-                                                    Json.Decode.fail "non-enter"
-                                         in
-                                         Json.Decode.andThen enterKeyJsonDecode
-                                            (Json.Decode.field "keyCode" Json.Decode.int)
-                                        )
-                            of
-                                Err _ ->
-                                    Editing currentString
-
-                                Ok () ->
-                                    submit currentString
-                        )
-                , Web.Dom.listenTo "blur"
-                    |> Web.Dom.modifierFutureMap
-                        (\_ -> submit currentString)
+            [ Web.Dom.element "fieldset"
+                [ Web.Dom.style "height" ((fontSize |> String.fromFloat) ++ "px")
+                , Web.Dom.style "width" ((textInputWidth |> String.fromFloat) ++ "px")
+                , Web.Dom.style "border" "none"
                 ]
-                []
+                [ Web.Dom.element "input"
+                    [ Web.Dom.attribute "type" "text"
+                    , Web.Dom.style "background-color" "transparent"
+                    , Web.Dom.style "color" "inherit"
+                    , Web.Dom.style "border-left" "none"
+                    , Web.Dom.style "border-right" "none"
+                    , Web.Dom.style "border-top" "none"
+                    , Web.Dom.style "border-bottom" "dotted 2px"
+                    , Web.Dom.style "margin" "-2px"
+                    , Web.Dom.style "position" "absolute"
+                    , Web.Dom.style "left" "0"
+                    , Web.Dom.style "top" "0"
+                    , Web.Dom.style "font-size" "1em"
+                    , Web.Dom.style "font-family" "inherit"
+                    , Web.Dom.style "vertical-align" "baseline"
+                    , Web.Dom.style "outline" "none"
+                    , Web.Dom.style "height" "100%"
+                    , Web.Dom.style "width" ((textInputWidth |> String.fromFloat) ++ "px") --"100%"
+                    , Web.Dom.attribute "size" (characterCountSize |> String.fromInt)
+                    , Web.Dom.stringProperty "value" currentString
+                    , Web.Dom.listenTo "input"
+                        |> Web.Dom.modifierFutureMap
+                            (\inputEventJson ->
+                                case
+                                    inputEventJson
+                                        |> Json.Decode.decodeValue
+                                            (Json.Decode.field "target" (Json.Decode.field "value" Json.Decode.string))
+                                of
+                                    Err _ ->
+                                        Editing currentString
+
+                                    Ok newName ->
+                                        Editing newName
+                            )
+                    , Web.Dom.listenTo "keydown"
+                        |> Web.Dom.modifierFutureMap
+                            (\keyDownEventJson ->
+                                case
+                                    keyDownEventJson
+                                        |> Json.Decode.decodeValue
+                                            (let
+                                                enterKeyJsonDecode : Int -> Json.Decode.Decoder ()
+                                                enterKeyJsonDecode keyCode =
+                                                    if keyCode == 13 then
+                                                        Json.Decode.succeed ()
+
+                                                    else
+                                                        Json.Decode.fail "non-enter"
+                                             in
+                                             Json.Decode.andThen enterKeyJsonDecode
+                                                (Json.Decode.field "keyCode" Json.Decode.int)
+                                            )
+                                of
+                                    Err _ ->
+                                        Editing currentString
+
+                                    Ok () ->
+                                        submit currentString
+                            )
+                    , Web.Dom.listenTo "blur"
+                        |> Web.Dom.modifierFutureMap
+                            (\_ -> submit currentString)
+                    ]
+                    []
+                ]
             ]
     }
 
