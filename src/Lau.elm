@@ -97,63 +97,43 @@ lookupToString =
             |> String.concat
 
 
-factBranchInvert : FactBranch -> List FactBranch
-factBranchInvert =
-    \factBranch ->
-        case factBranch of
-            BranchValid whyValid ->
-                -- TODO better error?
-                BranchInvalid ("not " ++ whyValid) |> List.singleton
+scopedVariableNameToString : ScopedVariableName -> String
+scopedVariableNameToString =
+    \scopedVariable ->
+        case scopedVariable.scope of
+            [] ->
+                scopedVariable.name
 
-            BranchInvalid whyInvalid ->
-                -- TODO better error?
-                BranchValid ("not " ++ whyInvalid) |> List.singleton
-
-            BranchValidRelation relation ->
-                BranchInvalidRelation relation |> List.singleton
-
-            BranchInvalidRelation relation ->
-                BranchValidRelation relation |> List.singleton
-
-            BranchValidVariableSubstitution substitution ->
-                BranchInvalidVariableSubstitution substitution |> List.singleton
-
-            BranchInvalidVariableSubstitution substitution ->
-                BranchValidVariableSubstitution substitution |> List.singleton
-
-            BranchAll parts ->
-                parts |> List.concatMap factBranchInvert
+            scopePart0 :: scopePart1Up ->
+                [ "["
+                , ((scopePart0 :: scopePart1Up)
+                    |> List.reverse
+                    |> List.map scopeRegionToString
+                  )
+                    |> String.join "/"
+                , "]"
+                , scopedVariable.name
+                ]
+                    |> String.concat
 
 
-valueVariablesMap :
-    (variableName -> ValueWithVariableName mappedVariableName)
-    ->
-        (ValueWithVariableName variableName
-         -> ValueWithVariableName mappedVariableName
-        )
-valueVariablesMap variableChange =
-    \value ->
-        case value of
-            Variable valueVariable ->
-                valueVariable |> variableChange
+scopeRegionToString : ScopeRegion -> String
+scopeRegionToString =
+    \scopeRegion ->
+        case scopeRegion of
+            ScopeRegionPartAtIndex partIndex ->
+                "part " ++ (partIndex |> String.fromInt)
 
-            ValueLookup valueLookup ->
-                valueLookup
-                    |> FastDict.map (\_ entryValue -> entryValue |> valueVariablesMap variableChange)
-                    |> ValueLookup
+            ScopeRegionBranchAtIndex branchIndex ->
+                "branch " ++ (branchIndex |> String.fromInt)
+
+            ScopeRegionIntoUseRelation identifier ->
+                identifier
 
 
-valueToValueLookup :
-    ValueWithVariableName variableName
-    -> Maybe (FastDict.Dict String (ValueWithVariableName variableName))
-valueToValueLookup =
-    \value ->
-        case value of
-            Variable _ ->
-                Nothing
-
-            ValueLookup valueLookup ->
-                valueLookup |> Just
+factBranchAllSingleton : FactBranchPart -> FactBranchAll
+factBranchAllSingleton =
+    \factBranch -> { branchAll = factBranch |> List.singleton }
 
 
 scopedVariableIsDeeperInThan : ScopedVariableName -> (ScopedVariableName -> Bool)
@@ -181,47 +161,69 @@ scopeDepth =
             |> List.length
 
 
+variableSubstitutionToWithDeeperInAsVariable :
+    { variable : ScopedVariableName
+    , value : ValueWithVariableName ScopedVariableName
+    }
+    ->
+        { variable : ScopedVariableName
+        , value : ValueWithVariableName ScopedVariableName
+        }
+variableSubstitutionToWithDeeperInAsVariable =
+    \variableSubstitution ->
+        case variableSubstitution.value of
+            Variable otherVariable ->
+                if otherVariable |> scopedVariableIsDeeperInThan variableSubstitution.variable then
+                    { variable = otherVariable, value = Variable variableSubstitution.variable }
+
+                else
+                    { variable = variableSubstitution.variable, value = Variable otherVariable }
+
+            ValueLookup otherValueLookup ->
+                { variable = variableSubstitution.variable, value = ValueLookup otherValueLookup }
+
+
 equal2Expand :
     { a : ValueWithVariableName ScopedVariableName
     , b : ValueWithVariableName ScopedVariableName
     }
-    -> FactBranch
+    -> FactBranchAll
 equal2Expand =
     \bothValues ->
         case ( bothValues.a, bothValues.b ) of
             ( Variable aVariable, ValueLookup bLookup ) ->
-                BranchValidVariableSubstitution
+                BranchPartValidVariableSubstitution
                     { variable = aVariable, value = bLookup |> ValueLookup }
+                    |> factBranchAllSingleton
 
             ( ValueLookup aLookup, Variable bVariable ) ->
-                BranchValidVariableSubstitution
+                BranchPartValidVariableSubstitution
                     { variable = bVariable, value = aLookup |> ValueLookup }
+                    |> factBranchAllSingleton
 
             ( Variable aVariableName, Variable bVariableName ) ->
                 if aVariableName == bVariableName then
-                    BranchValid
+                    BranchPartValid
                         ([ "variable "
                          , aVariableName |> scopedVariableNameToString
                          , " equal to itself"
                          ]
                             |> String.concat
                         )
-
-                else if aVariableName |> scopedVariableIsDeeperInThan bVariableName then
-                    BranchValidVariableSubstitution
-                        { variable = aVariableName
-                        , value = bVariableName |> Variable
-                        }
+                        |> factBranchAllSingleton
 
                 else
-                    BranchValidVariableSubstitution
-                        { variable = bVariableName
-                        , value = aVariableName |> Variable
-                        }
+                    BranchPartValidVariableSubstitution
+                        ({ variable = aVariableName
+                         , value = Variable bVariableName
+                         }
+                            |> variableSubstitutionToWithDeeperInAsVariable
+                        )
+                        |> factBranchAllSingleton
 
             ( ValueLookup aLookup, ValueLookup bLookup ) ->
                 let
-                    entriesExpanded : Result String (List FactBranch)
+                    entriesExpanded : Result String (List FactBranchAll)
                     entriesExpanded =
                         FastDict.merge
                             (\entryKey _ _ -> Err entryKey)
@@ -242,29 +244,76 @@ equal2Expand =
                 in
                 case entriesExpanded of
                     Err entryKey ->
-                        BranchInvalid
+                        BranchPartInvalid
                             ([ "equating a value with an entry key "
                              , entryKey
                              , " with a value that does not contain this key."
                              ]
                                 |> String.concat
                             )
+                            |> factBranchAllSingleton
 
                     Ok expanded ->
-                        expanded |> BranchAll
+                        { branchAll = expanded |> List.concatMap .branchAll }
+
+
+factOrInvert : List FactBranchAll -> FactBranchAll
+factOrInvert =
+    \factBranches ->
+        -- TODO not 100% sure
+        { branchAll =
+            factBranches
+                |> List.concatMap
+                    (\inverseFactBranch ->
+                        inverseFactBranch |> factBranchAllInvert |> .branchAll
+                    )
+        }
+
+
+factBranchAllInvert : FactBranchAll -> FactBranchAll
+factBranchAllInvert =
+    \factBranchAll ->
+        { branchAll = factBranchAll.branchAll |> List.map factBranchPartInvert
+        }
+
+
+factBranchPartInvert : FactBranchPart -> FactBranchPart
+factBranchPartInvert =
+    \factBranch ->
+        case factBranch of
+            BranchPartValid whyValid ->
+                -- TODO better error?
+                BranchPartInvalid ("not " ++ whyValid)
+
+            BranchPartInvalid whyInvalid ->
+                -- TODO better error?
+                BranchPartValid ("not " ++ whyInvalid)
+
+            BranchPartValidRelation relation ->
+                BranchPartInvalidRelation relation
+
+            BranchPartInvalidRelation relation ->
+                BranchPartValidRelation relation
+
+            BranchPartValidVariableSubstitution substitution ->
+                BranchPartInvalidVariableSubstitution substitution
+
+            BranchPartInvalidVariableSubstitution substitution ->
+                BranchPartValidVariableSubstitution substitution
 
 
 factExpand :
     { scope : List ScopeRegion }
-    -> (FactWithVariableName ScopedVariableName -> List FactBranch)
+    -> (FactWithVariableName ScopedVariableName -> List FactBranchAll)
 factExpand context fact =
     case fact of
         RelationUse relation ->
-            BranchValidRelation
+            BranchPartValidRelation
                 { identifier = relation.identifier
                 , argument = relation.argument
                 , innerScope = ScopeRegionIntoUseRelation relation.identifier :: context.scope
                 }
+                |> factBranchAllSingleton
                 |> List.singleton
 
         Equal values ->
@@ -273,8 +322,7 @@ factExpand context fact =
         Not inverseFact ->
             inverseFact
                 |> factExpand context
-                |> List.concatMap factBranchInvert
-                |> BranchAll
+                |> factOrInvert
                 |> List.singleton
 
         All parts ->
@@ -289,7 +337,12 @@ factExpand context fact =
                                 }
                     )
                 |> List.LauExtra.oneOfEach
-                |> List.map (\branchParts -> branchParts |> BranchAll)
+                |> List.map
+                    (\branchParts ->
+                        { branchAll =
+                            branchParts |> List.concatMap .branchAll
+                        }
+                    )
 
         Any branches ->
             branches
@@ -322,135 +375,24 @@ evaluate =
                             |> Variable
                     }
                     |> factExpand { scope = [] }
-                    |> factBranchesExpandFully project
+                    |> factOrExpandFully project
 
 
-factBranchExpand : Project -> (FactBranch -> List FactBranch)
-factBranchExpand project factBranch =
-    case factBranch of
-        BranchValid whyValid ->
-            BranchValid whyValid |> List.singleton
-
-        BranchInvalid whyInvalid ->
-            BranchInvalid whyInvalid |> List.singleton
-
-        BranchValidVariableSubstitution substitution ->
-            BranchValidVariableSubstitution substitution |> List.singleton
-
-        BranchInvalidVariableSubstitution substitution ->
-            BranchInvalidVariableSubstitution substitution |> List.singleton
-
-        BranchValidRelation relation ->
-            case project.relationDefinitions |> FastDict.get relation.identifier of
-                Nothing ->
-                    BranchInvalid
-                        ([ "The relation "
-                         , relation.identifier
-                         , " isn't defined. Define it or choose a differently named relation."
-                         ]
-                            |> String.concat
-                        )
-                        |> List.singleton
-
-                Just definition ->
-                    definition.equivalentFact
-                        |> factVariablesMap
-                            (\variableName ->
-                                if variableName == definition.argumentVariable then
-                                    relation.argument
-
-                                else if variableName == "Result" then
-                                    Debug.todo ("how did this happen... " ++ (definition.equivalentFact |> Debug.toString))
-
-                                else
-                                    Variable
-                                        { scope = relation.innerScope
-                                        , name = variableName
-                                        }
-                            )
-                        |> factExpand { scope = relation.innerScope }
-
-        BranchInvalidRelation inverseRelation ->
-            case project.relationDefinitions |> FastDict.get inverseRelation.identifier of
-                Nothing ->
-                    BranchInvalid
-                        ([ "The relation "
-                         , inverseRelation.identifier
-                         , " isn't defined. Define it or choose a differently named relation."
-                         ]
-                            |> String.concat
-                        )
-                        |> List.singleton
-
-                Just definition ->
-                    definition.equivalentFact
-                        |> factVariablesMap
-                            (\variableName ->
-                                if variableName == definition.argumentVariable then
-                                    inverseRelation.argument
-
-                                else
-                                    Variable
-                                        { scope = inverseRelation.innerScope
-                                        , name = variableName
-                                        }
-                            )
-                        |> factExpand { scope = inverseRelation.innerScope }
-                        |> List.concatMap factBranchInvert
-                        |> BranchAll
-                        |> List.singleton
-
-        BranchAll parts ->
-            parts |> branchAllExpand project
-
-
-factVariablesMap :
-    (variableName -> ValueWithVariableName mappedVariableName)
-    ->
-        (FactWithVariableName variableName
-         -> FactWithVariableName mappedVariableName
-        )
-factVariablesMap variableChange =
-    \fact ->
-        case fact of
-            RelationUse relationUse ->
-                RelationUse
-                    { identifier = relationUse.identifier
-                    , argument = relationUse.argument |> valueVariablesMap variableChange
-                    }
-
-            Equal values ->
-                Equal
-                    { a = values.a |> valueVariablesMap variableChange
-                    , b = values.b |> valueVariablesMap variableChange
-                    }
-
-            Not invertedFact ->
-                Not (invertedFact |> factVariablesMap variableChange)
-
-            All parts ->
-                All
-                    (parts
-                        |> List.map (\part -> part |> factVariablesMap variableChange)
-                    )
-
-            Any branches ->
-                Any
-                    (branches
-                        |> List.map (\branch -> branch |> factVariablesMap variableChange)
-                    )
-
-
-factBranchesExpandFully : Project -> (List FactBranch -> Result String Lookup)
-factBranchesExpandFully project =
+factOrExpandFully : Project -> (List FactBranchAll -> Result String Lookup)
+factOrExpandFully project =
     \branchesIncludingInvalid ->
         let
+            branchesExpandedResults : List ExpandedResult
+            branchesExpandedResults =
+                branchesIncludingInvalid
+                    |> List.map factBranchAllToExpandedResult
+
             firstBranchWithLookupResult : Maybe Lookup
             firstBranchWithLookupResult =
-                branchesIncludingInvalid
+                branchesExpandedResults
                     |> List.LauExtra.firstJustMap
-                        (\branch ->
-                            case branch |> factBranchToExpandedResult of
+                        (\branchExpandedResult ->
+                            case branchExpandedResult of
                                 ExpansionFailed _ ->
                                     Nothing
 
@@ -467,12 +409,7 @@ factBranchesExpandFully project =
 
             Nothing ->
                 let
-                    branchesExpandedResults : List ExpandedResult
-                    branchesExpandedResults =
-                        branchesIncludingInvalid
-                            |> List.map factBranchToExpandedResult
-
-                    expandableBranchFacts : List FactBranch
+                    expandableBranchFacts : List FactBranchAll
                     expandableBranchFacts =
                         branchesExpandedResults
                             |> List.filterMap
@@ -488,10 +425,10 @@ factBranchesExpandFully project =
                                             Nothing
                                 )
 
-                    determinedOrNeedsExpanding : Result (List FactBranch) Lookup
+                    determinedOrNeedsExpanding : Result (List FactBranchAll) Lookup
                     determinedOrNeedsExpanding =
                         expandableBranchFacts
-                            |> List.concatMap (\branch -> branch |> factBranchExpand project)
+                            |> List.concatMap (\branch -> branch |> factBranchAllExpand project)
                             |> List.foldl
                                 (\branchExpanded soFar ->
                                     case soFar of
@@ -499,7 +436,7 @@ factBranchesExpandFully project =
                                             determined |> Ok
 
                                         Err soFarBranchesNeedExpanding ->
-                                            case branchExpanded |> factBranchToExpandedResult of
+                                            case branchExpanded |> factBranchAllToExpandedResult of
                                                 ExpandedToLookup determined ->
                                                     determined |> Ok
 
@@ -539,43 +476,89 @@ factBranchesExpandFully project =
                         if needsExpanding == expandableBranchFacts then
                             Err
                                 ("the result isn't constrained to a specific solution. Here's what I figured out: "
-                                    ++ (needsExpanding |> List.map factBranchToString |> String.join "\n")
+                                    ++ (needsExpanding |> List.map factBranchAllToString |> String.join "\n")
                                 )
 
                         else
-                            let
-                                _ =
-                                    Debug.log
-                                        ([ "------------------------ all facts expanded to --------------------------\n"
-                                         , needsExpanding
-                                            |> List.map (\factBranch -> "  - " ++ (factBranch |> factBranchToString))
-                                            |> String.join "\n"
-                                         , "\n"
-                                         ]
-                                            |> String.concat
-                                        )
-                                        ()
-                            in
+                            {- let
+                                   _ =
+                                       Debug.log
+                                           ([ "------------------------ all facts expanded to --------------------------\n"
+                                            , needsExpanding
+                                               |> List.map (\factBranch -> "  - " ++ (factBranch |> factBranchAllToString))
+                                               |> String.join "\n"
+                                            , "\n"
+                                            ]
+                                               |> String.concat
+                                           )
+                                           ()
+                               in
+                            -}
                             needsExpanding
-                                |> factBranchesExpandFully project
+                                |> factOrExpandFully project
 
 
-type ExpandedResult
-    = ExpandedToLookup Lookup
-    | ExpansionNeedsToContinue FactBranch
-    | ExpansionFailed String
+factBranchAllToExpandedResult : FactBranchAll -> ExpandedResult
+factBranchAllToExpandedResult =
+    \factBranchAll ->
+        case factBranchAll.branchAll of
+            [] ->
+                ExpansionFailed "empty all"
+
+            [ onlyPart ] ->
+                onlyPart |> factBranchToExpandedResult
+
+            part0 :: part1Up ->
+                ExpansionNeedsToContinue { branchAll = part0 :: part1Up }
 
 
-factBranchToExpandedResult : FactBranch -> ExpandedResult
+valueToString : ValueWithVariableName ScopedVariableName -> String
+valueToString =
+    \value ->
+        case value of
+            Variable variableName ->
+                variableName |> scopedVariableNameToString
+
+            ValueLookup valueLookup ->
+                [ "{"
+                , valueLookup
+                    |> FastDict.toList
+                    |> List.map
+                        (\( entryName, entryValue ) ->
+                            [ entryName, " ", entryValue |> valueToString ] |> String.concat
+                        )
+                    |> String.join " , "
+                , "}"
+                ]
+                    |> String.concat
+
+
+valueToValueLookup :
+    ValueWithVariableName variableName
+    -> Maybe (FastDict.Dict String (ValueWithVariableName variableName))
+valueToValueLookup =
+    \value ->
+        case value of
+            Variable _ ->
+                Nothing
+
+            ValueLookup valueLookup ->
+                valueLookup |> Just
+
+
+factBranchToExpandedResult : FactBranchPart -> ExpandedResult
 factBranchToExpandedResult =
     \fact ->
         case fact of
-            BranchValidVariableSubstitution substitution ->
+            BranchPartValidVariableSubstitution substitution ->
                 case substitution.variable.scope of
                     [] ->
                         case substitution.value |> valueToValueLookup |> Maybe.andThen valueLookupToLookup of
                             Nothing ->
-                                ExpansionNeedsToContinue (BranchValidVariableSubstitution substitution)
+                                ExpansionNeedsToContinue
+                                    (BranchPartValidVariableSubstitution substitution
+                                        |> factBranchAllSingleton
+                                    )
 
                             Just lookup ->
                                 ExpandedToLookup lookup
@@ -594,18 +577,18 @@ factBranchToExpandedResult =
                                     )
 
                             Nothing ->
-                                ExpansionNeedsToContinue (BranchValidVariableSubstitution substitution)
+                                ExpansionNeedsToContinue
+                                    (BranchPartValidVariableSubstitution substitution |> factBranchAllSingleton)
 
-            BranchAll parts ->
-                ExpansionNeedsToContinue (BranchAll parts)
+            BranchPartValidRelation validRelation ->
+                ExpansionNeedsToContinue
+                    (BranchPartValidRelation validRelation |> factBranchAllSingleton)
 
-            BranchValidRelation validRelation ->
-                ExpansionNeedsToContinue (BranchValidRelation validRelation)
+            BranchPartInvalidRelation invalidRelation ->
+                ExpansionNeedsToContinue
+                    (BranchPartInvalidRelation invalidRelation |> factBranchAllSingleton)
 
-            BranchInvalidRelation invalidRelation ->
-                ExpansionNeedsToContinue (BranchInvalidRelation invalidRelation)
-
-            BranchValid whyValid ->
+            BranchPartValid whyValid ->
                 ExpansionFailed
                     ([ "all values are possible: "
                      , whyValid
@@ -614,10 +597,10 @@ factBranchToExpandedResult =
                         |> String.concat
                     )
 
-            BranchInvalid whyInvalid ->
+            BranchPartInvalid whyInvalid ->
                 ExpansionFailed whyInvalid
 
-            BranchInvalidVariableSubstitution invalidSubstitution ->
+            BranchPartInvalidVariableSubstitution invalidSubstitution ->
                 ExpansionFailed
                     ([ "We only know that variable "
                      , invalidSubstitution.variable |> scopedVariableNameToString
@@ -642,51 +625,27 @@ valueLookupToLookup =
             |> Maybe.map (\entries -> entries |> FastDict.fromList |> Lookup)
 
 
-scopedVariableNameToString : ScopedVariableName -> String
-scopedVariableNameToString =
-    \scopedVariable ->
-        case scopedVariable.scope of
-            [] ->
-                scopedVariable.name
-
-            scopePart0 :: scopePart1Up ->
-                [ "["
-                , ((scopePart0 :: scopePart1Up)
-                    |> List.reverse
-                    |> List.map scopeRegionToString
-                  )
-                    |> String.join "/"
-                , "]"
-                , scopedVariable.name
-                ]
-                    |> String.concat
+factBranchAllToString : FactBranchAll -> String
+factBranchAllToString =
+    \factBranchAll ->
+        [ "("
+        , factBranchAll.branchAll |> List.map factBranchPartToString |> String.join " and "
+        , ")"
+        ]
+            |> String.concat
 
 
-scopeRegionToString : ScopeRegion -> String
-scopeRegionToString =
-    \scopeRegion ->
-        case scopeRegion of
-            ScopeRegionPartAtIndex partIndex ->
-                "part " ++ (partIndex |> String.fromInt)
-
-            ScopeRegionBranchAtIndex branchIndex ->
-                "branch " ++ (branchIndex |> String.fromInt)
-
-            ScopeRegionIntoUseRelation identifier ->
-                identifier
-
-
-factBranchToString : FactBranch -> String
-factBranchToString =
+factBranchPartToString : FactBranchPart -> String
+factBranchPartToString =
     \factBranch ->
         case factBranch of
-            BranchValid whyValid ->
+            BranchPartValid whyValid ->
                 [ "✅\"", whyValid, "\"" ] |> String.concat
 
-            BranchInvalid whyInvalid ->
+            BranchPartInvalid whyInvalid ->
                 [ "❌\"", whyInvalid, "\"" ] |> String.concat
 
-            BranchValidVariableSubstitution substitution ->
+            BranchPartValidVariableSubstitution substitution ->
                 [ "("
                 , substitution.variable |> scopedVariableNameToString
                 , " = "
@@ -695,7 +654,7 @@ factBranchToString =
                 ]
                     |> String.concat
 
-            BranchInvalidVariableSubstitution substitution ->
+            BranchPartInvalidVariableSubstitution substitution ->
                 [ "("
                 , substitution.variable |> scopedVariableNameToString
                 , " ≠ "
@@ -704,7 +663,7 @@ factBranchToString =
                 ]
                     |> String.concat
 
-            BranchValidRelation relation ->
+            BranchPartValidRelation relation ->
                 [ "("
                 , relation.identifier
                 , " "
@@ -713,7 +672,7 @@ factBranchToString =
                 ]
                     |> String.concat
 
-            BranchInvalidRelation relation ->
+            BranchPartInvalidRelation relation ->
                 [ "(not ("
                 , relation.identifier
                 , " "
@@ -722,95 +681,31 @@ factBranchToString =
                 ]
                     |> String.concat
 
-            BranchAll parts ->
-                [ "("
-                , parts |> List.map factBranchToString |> String.join " and "
-                , ")"
-                ]
-                    |> String.concat
 
-
-valueToString : ValueWithVariableName ScopedVariableName -> String
-valueToString =
-    \value ->
-        case value of
-            Variable variableName ->
-                variableName |> scopedVariableNameToString
-
-            ValueLookup valueLookup ->
-                [ "{"
-                , valueLookup
-                    |> FastDict.toList
-                    |> List.map
-                        (\( entryName, entryValue ) ->
-                            [ entryName, " ", entryValue |> valueToString ] |> String.concat
-                        )
-                    |> String.join " , "
-                , "}"
-                ]
-                    |> String.concat
-
-
-type alias ScopedVariableName =
-    { scope : List ScopeRegion
-    , name : String
-    }
-
-
-type ScopeRegion
-    = ScopeRegionPartAtIndex Int
-    | ScopeRegionBranchAtIndex Int
-    | ScopeRegionIntoUseRelation String
-
-
-type FactBranch
-    = BranchValid String
-    | BranchInvalid String
-    | BranchValidVariableSubstitution
-        { variable : ScopedVariableName
-        , value : ValueWithVariableName ScopedVariableName
-        }
-    | BranchInvalidVariableSubstitution
-        { variable : ScopedVariableName
-        , value : ValueWithVariableName ScopedVariableName
-        }
-    | BranchValidRelation
-        { identifier : String
-        , argument : ValueWithVariableName ScopedVariableName
-        , innerScope : List ScopeRegion
-        }
-    | BranchInvalidRelation
-        { identifier : String
-        , argument : ValueWithVariableName ScopedVariableName
-        , innerScope : List ScopeRegion
-        }
-    | BranchAll (List FactBranch)
-
-
-branchAllExpand : Project -> (List FactBranch -> List FactBranch)
-branchAllExpand project =
-    \parts ->
-        case parts of
+factBranchAllExpand : Project -> (FactBranchAll -> List FactBranchAll)
+factBranchAllExpand project =
+    \factBranchAll ->
+        case factBranchAll.branchAll of
             [] ->
-                BranchValid "empty all" |> List.singleton
+                BranchPartValid "empty all" |> factBranchAllSingleton |> List.singleton
 
             [ only ] ->
-                only |> List.singleton
+                only |> factBranchExpand project
 
             onePart :: twoPart :: otherParts ->
                 case (onePart :: twoPart :: otherParts) |> List.LauExtra.firstJustMap factBranchIsInvalid of
                     Just reason ->
-                        BranchInvalid reason |> List.singleton
+                        BranchPartInvalid reason |> factBranchAllSingleton |> List.singleton
 
                     Nothing ->
                         let
-                            notObviouslyValidParts : List FactBranch
+                            notObviouslyValidParts : List FactBranchPart
                             notObviouslyValidParts =
                                 (onePart :: twoPart :: otherParts)
                                     |> List.filterMap
                                         (\part ->
                                             case part of
-                                                BranchValid _ ->
+                                                BranchPartValid _ ->
                                                     Nothing
 
                                                 notObviouslyValid ->
@@ -827,7 +722,7 @@ branchAllExpand project =
                                     |> List.filterMap
                                         (\part ->
                                             case part of
-                                                BranchValidVariableSubstitution substitution ->
+                                                BranchPartValidVariableSubstitution substitution ->
                                                     substitution |> Just
 
                                                 _ ->
@@ -841,7 +736,10 @@ branchAllExpand project =
                                 notObviouslyValidParts
                                     |> List.map (\part -> part |> factBranchExpand project)
                                     |> List.LauExtra.oneOfEach
-                                    |> List.map (\branchParts -> branchParts |> BranchAll)
+                                    |> List.map
+                                        (\branchParts ->
+                                            { branchAll = branchParts |> List.concatMap .branchAll }
+                                        )
 
                             oneVariableSubstitutionPart :: otherVariableSubstitutionParts ->
                                 let
@@ -864,37 +762,183 @@ branchAllExpand project =
                                                 )
                                                 oneVariableSubstitutionPart
                                 in
-                                (if substitutionOfDeepestInVariable |> substitutionIsErasing then
-                                    notObviouslyValidParts
-                                        |> List.filter
+                                { branchAll =
+                                    (if substitutionOfDeepestInVariable |> substitutionIsErasing then
+                                        {- let
+                                               _ =
+                                                   Debug.log
+                                                       ([ "now substituting (erasing) "
+                                                        , substitutionOfDeepestInVariable.variable |> scopedVariableNameToString
+                                                        , " for "
+                                                        , substitutionOfDeepestInVariable.value |> valueToString
+                                                        ]
+                                                           |> String.concat
+                                                       )
+                                                       ()
+                                           in
+                                        -}
+                                        notObviouslyValidParts
+                                            |> List.filter
+                                                (\part ->
+                                                    part /= BranchPartValidVariableSubstitution substitutionOfDeepestInVariable
+                                                )
+
+                                     else
+                                        notObviouslyValidParts
+                                    )
+                                        |> List.map
                                             (\part ->
-                                                part /= BranchValidVariableSubstitution substitutionOfDeepestInVariable
+                                                part
+                                                    |> factBranchVariablesMap
+                                                        (\variableName ->
+                                                            if variableName == substitutionOfDeepestInVariable.variable then
+                                                                substitutionOfDeepestInVariable.value
+
+                                                            else
+                                                                Variable variableName
+                                                        )
                                             )
-
-                                 else
-                                    notObviouslyValidParts
-                                )
-                                    |> List.map
-                                        (\part ->
-                                            part
-                                                |> factBranchVariablesMap
-                                                    (\variableName ->
-                                                        if variableName == substitutionOfDeepestInVariable.variable then
-                                                            substitutionOfDeepestInVariable.value
-
-                                                        else
-                                                            Variable variableName
-                                                    )
-                                        )
-                                    |> BranchAll
+                                        |> List.concatMap .branchAll
+                                }
                                     |> List.singleton
 
 
-factBranchIsInvalid : FactBranch -> Maybe String
+factBranchExpand : Project -> (FactBranchPart -> List FactBranchAll)
+factBranchExpand project factBranch =
+    case factBranch of
+        BranchPartValid whyValid ->
+            BranchPartValid whyValid |> factBranchAllSingleton |> List.singleton
+
+        BranchPartInvalid whyInvalid ->
+            BranchPartInvalid whyInvalid |> factBranchAllSingleton |> List.singleton
+
+        BranchPartValidVariableSubstitution substitution ->
+            BranchPartValidVariableSubstitution substitution |> factBranchAllSingleton |> List.singleton
+
+        BranchPartInvalidVariableSubstitution substitution ->
+            BranchPartInvalidVariableSubstitution substitution
+                |> factBranchAllSingleton
+                |> List.singleton
+
+        BranchPartValidRelation relation ->
+            case project.relationDefinitions |> FastDict.get relation.identifier of
+                Nothing ->
+                    BranchPartInvalid
+                        ([ "The relation "
+                         , relation.identifier
+                         , " isn't defined. Define it or choose a differently named relation."
+                         ]
+                            |> String.concat
+                        )
+                        |> factBranchAllSingleton
+                        |> List.singleton
+
+                Just definition ->
+                    definition.equivalentFact
+                        |> factVariablesMap
+                            (\variableName ->
+                                if variableName == definition.argumentVariable then
+                                    relation.argument
+
+                                else
+                                    Variable
+                                        { scope = relation.innerScope
+                                        , name = variableName
+                                        }
+                            )
+                        |> factExpand { scope = relation.innerScope }
+
+        BranchPartInvalidRelation inverseRelation ->
+            case project.relationDefinitions |> FastDict.get inverseRelation.identifier of
+                Nothing ->
+                    BranchPartInvalid
+                        ([ "The relation "
+                         , inverseRelation.identifier
+                         , " isn't defined. Define it or choose a differently named relation."
+                         ]
+                            |> String.concat
+                        )
+                        |> factBranchAllSingleton
+                        |> List.singleton
+
+                Just definition ->
+                    definition.equivalentFact
+                        |> factVariablesMap
+                            (\variableName ->
+                                if variableName == definition.argumentVariable then
+                                    inverseRelation.argument
+
+                                else
+                                    Variable
+                                        { scope = inverseRelation.innerScope
+                                        , name = variableName
+                                        }
+                            )
+                        |> factExpand { scope = inverseRelation.innerScope }
+                        |> factOrInvert
+                        |> List.singleton
+
+
+valueVariablesMap :
+    (variableName -> ValueWithVariableName mappedVariableName)
+    ->
+        (ValueWithVariableName variableName
+         -> ValueWithVariableName mappedVariableName
+        )
+valueVariablesMap variableChange =
+    \value ->
+        case value of
+            Variable valueVariable ->
+                valueVariable |> variableChange
+
+            ValueLookup valueLookup ->
+                valueLookup
+                    |> FastDict.map (\_ entryValue -> entryValue |> valueVariablesMap variableChange)
+                    |> ValueLookup
+
+
+factVariablesMap :
+    (variableName -> ValueWithVariableName mappedVariableName)
+    ->
+        (FactWithVariableName variableName
+         -> FactWithVariableName mappedVariableName
+        )
+factVariablesMap variableChange =
+    \fact ->
+        case fact of
+            RelationUse relationUse ->
+                RelationUse
+                    { identifier = relationUse.identifier
+                    , argument = relationUse.argument |> valueVariablesMap variableChange
+                    }
+
+            Equal values ->
+                Equal
+                    { a = values.a |> valueVariablesMap variableChange
+                    , b = values.b |> valueVariablesMap variableChange
+                    }
+
+            Not invertedFact ->
+                Not (invertedFact |> factVariablesMap variableChange)
+
+            All parts ->
+                All
+                    (parts
+                        |> List.map (\part -> part |> factVariablesMap variableChange)
+                    )
+
+            Any branches ->
+                Any
+                    (branches
+                        |> List.map (\branch -> branch |> factVariablesMap variableChange)
+                    )
+
+
+factBranchIsInvalid : FactBranchPart -> Maybe String
 factBranchIsInvalid =
     \factBranch ->
         case factBranch of
-            BranchInvalid reason ->
+            BranchPartInvalid reason ->
                 Just reason
 
             _ ->
@@ -903,71 +947,70 @@ factBranchIsInvalid =
 
 factBranchVariablesMap :
     (ScopedVariableName -> ValueWithVariableName ScopedVariableName)
-    -> (FactBranch -> FactBranch)
+    -> (FactBranchPart -> FactBranchAll)
 factBranchVariablesMap variableChange =
     \fact ->
         case fact of
-            BranchValid whyValid ->
-                BranchValid whyValid
+            BranchPartValid whyValid ->
+                BranchPartValid whyValid |> factBranchAllSingleton
 
-            BranchInvalid whyInvalid ->
-                BranchInvalid whyInvalid
+            BranchPartInvalid whyInvalid ->
+                BranchPartInvalid whyInvalid |> factBranchAllSingleton
 
-            BranchValidRelation factRelation ->
+            BranchPartValidRelation factRelation ->
                 { identifier = factRelation.identifier
                 , argument =
                     factRelation.argument
                         |> valueVariablesMap variableChange
                 , innerScope = factRelation.innerScope
                 }
-                    |> BranchValidRelation
+                    |> BranchPartValidRelation
+                    |> factBranchAllSingleton
 
-            BranchInvalidRelation factRelation ->
+            BranchPartInvalidRelation factRelation ->
                 { identifier = factRelation.identifier
                 , argument =
                     factRelation.argument
                         |> valueVariablesMap variableChange
                 , innerScope = factRelation.innerScope
                 }
-                    |> BranchInvalidRelation
+                    |> BranchPartInvalidRelation
+                    |> factBranchAllSingleton
 
-            BranchValidVariableSubstitution substitution ->
+            BranchPartValidVariableSubstitution substitution ->
                 { a = substitution.variable |> Variable |> valueVariablesMap variableChange
                 , b = substitution.value |> valueVariablesMap variableChange
                 }
                     |> equal2Expand
 
-            BranchInvalidVariableSubstitution substitution ->
+            BranchPartInvalidVariableSubstitution substitution ->
                 { a = substitution.variable |> Variable |> valueVariablesMap variableChange
                 , b = substitution.value |> valueVariablesMap variableChange
                 }
                     |> different2Expand
-
-            BranchAll parts ->
-                parts
-                    |> List.map (\part -> part |> factBranchVariablesMap variableChange)
-                    |> BranchAll
 
 
 different2Expand :
     { a : ValueWithVariableName ScopedVariableName
     , b : ValueWithVariableName ScopedVariableName
     }
-    -> FactBranch
+    -> FactBranchAll
 different2Expand =
     \bothValues ->
         case ( bothValues.a, bothValues.b ) of
             ( Variable aVariable, ValueLookup bLookup ) ->
-                BranchInvalidVariableSubstitution
+                BranchPartInvalidVariableSubstitution
                     { variable = aVariable, value = bLookup |> ValueLookup }
+                    |> factBranchAllSingleton
 
             ( ValueLookup aLookup, Variable bVariable ) ->
-                BranchInvalidVariableSubstitution
+                BranchPartInvalidVariableSubstitution
                     { variable = bVariable, value = aLookup |> ValueLookup }
+                    |> factBranchAllSingleton
 
             ( Variable aVariable, Variable bVariable ) ->
                 if aVariable == bVariable then
-                    BranchInvalid
+                    BranchPartInvalid
                         ([ "expected variables "
                          , aVariable.name
                          , " and "
@@ -976,22 +1019,29 @@ different2Expand =
                          ]
                             |> String.concat
                         )
+                        |> factBranchAllSingleton
 
                 else
-                    BranchValidVariableSubstitution { variable = aVariable, value = bVariable |> Variable }
+                    BranchPartValidVariableSubstitution
+                        ({ variable = aVariable, value = bVariable |> Variable }
+                            |> variableSubstitutionToWithDeeperInAsVariable
+                        )
+                        |> factBranchAllSingleton
 
             ( ValueLookup aLookup, ValueLookup bLookup ) ->
-                FastDict.merge
-                    (\_ _ soFar -> soFar)
-                    (\_ aEntryValue bEntryValue soFar ->
-                        ({ a = aEntryValue, b = bEntryValue } |> different2Expand)
-                            :: soFar
-                    )
-                    (\_ _ soFar -> soFar)
-                    aLookup
-                    bLookup
-                    []
-                    |> BranchAll
+                { branchAll =
+                    FastDict.merge
+                        (\_ _ soFar -> soFar)
+                        (\_ aEntryValue bEntryValue soFar ->
+                            ({ a = aEntryValue, b = bEntryValue } |> different2Expand)
+                                :: soFar
+                        )
+                        (\_ _ soFar -> soFar)
+                        aLookup
+                        bLookup
+                        []
+                        |> List.concatMap .branchAll
+                }
 
 
 substitutionIsErasing :
@@ -1020,3 +1070,48 @@ dictAll isFound =
                 (\state ->
                     isFound state.key state.value && state.left () && state.right ()
                 )
+
+
+type ExpandedResult
+    = ExpandedToLookup Lookup
+    | ExpansionNeedsToContinue FactBranchAll
+    | ExpansionFailed String
+
+
+type alias ScopedVariableName =
+    { scope : List ScopeRegion
+    , name : String
+    }
+
+
+type ScopeRegion
+    = ScopeRegionPartAtIndex Int
+    | ScopeRegionBranchAtIndex Int
+    | ScopeRegionIntoUseRelation String
+
+
+type alias FactBranchAll =
+    { branchAll : List FactBranchPart }
+
+
+type FactBranchPart
+    = BranchPartValid String
+    | BranchPartInvalid String
+    | BranchPartValidVariableSubstitution
+        { variable : ScopedVariableName
+        , value : ValueWithVariableName ScopedVariableName
+        }
+    | BranchPartInvalidVariableSubstitution
+        { variable : ScopedVariableName
+        , value : ValueWithVariableName ScopedVariableName
+        }
+    | BranchPartValidRelation
+        { identifier : String
+        , argument : ValueWithVariableName ScopedVariableName
+        , innerScope : List ScopeRegion
+        }
+    | BranchPartInvalidRelation
+        { identifier : String
+        , argument : ValueWithVariableName ScopedVariableName
+        , innerScope : List ScopeRegion
+        }

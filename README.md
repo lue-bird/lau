@@ -16,18 +16,16 @@ Reduces things you need to know and keep in your mind.
 
 ## status (TODO)
 
-  - language evaluation isn't working just yet
-  - studio
-      - scrolling
-      - fix issue where double click removes outer
-      - block sidebar
-          - search (relation, variable, entry key)
-          - variable renaming
-          - value lookup entry key renaming
-          - relation renaming
-          - navigating to relation definition
-      - evaluation frame
-      - relation definition deleting
+  - scrolling
+  - fix issue where double click removes outer
+  - block sidebar
+      - search (relation, variable, entry key)
+      - variable renaming
+      - value lookup entry key renaming
+      - relation renaming
+      - navigating to relation definition
+  - evaluation frame
+  - relation definition deleting
 
 ![screenshot of the in-progress ui](https://github.com/lue-bird/lau/assets/81869893/0cfc0399-9acb-4c1c-a2e7-e0dd7a7ca979)
 
