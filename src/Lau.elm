@@ -21,7 +21,7 @@ Currently I'm not super excited to do this because it will
 
   - increase memory usage if not applied with some heuristic
   - complicate the code
-  - make running in parallel harder (maybe? not sure),
+  - make running in parallel harder/less performant,
     e.g. when [the elm HVM compiler](https://github.com/Janiczek/elm-bend) gets created
 
 -}
