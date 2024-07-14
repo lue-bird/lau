@@ -1,15 +1,15 @@
 module Lau exposing
     ( Lookup(..), ValueWithVariableName(..)
     , Fact, FactWithVariableName(..)
-    , Project, evaluate
-    , lookupToString
+    , Project, evaluate, EvaluationError(..), WhyInvalid(..), WhyValid(..)
+    , FactExpansionAll, FactExpansionAny, FactExpansionPart(..), ScopeRegion(..), ScopedVariableName, evaluationErrorToString, lookupToString
     )
 
 {-| Language representation and evaluation
 
 @docs Lookup, ValueWithVariableName
 @docs Fact, FactWithVariableName
-@docs Project, evaluate
+@docs Project, evaluate, EvaluationError, WhyInvalid, WhyValid
 
 
 ## possible future explorations
@@ -97,10 +97,37 @@ lookupToString =
             |> String.concat
 
 
-factExpansionAnySingleton : FactExpansionAll -> FactExpansionAny
-factExpansionAnySingleton =
-    \factExpansionAll ->
-        { factExpansionAny = factExpansionAll |> List.singleton }
+{-| TODO split into valid/unconstrained vs invalid
+-}
+type EvaluationError
+    = EvaluationErrorInvalid WhyInvalid
+    | EvaluationErrorValid WhyValid
+    | EvaluationErrorRelationNotDefined String
+    | EvaluationErrorMainRelationNotDefined
+    | EvaluationErrorAllBranchesHaveStopped (List EvaluationError)
+    | EvaluationErrorNoConcreteSolutionAny FactExpansionAny
+    | EvaluationErrorOnlyDeeperInValidVariableSubstitution
+        { variable : ScopedVariableName
+        , value : ValueWithVariableName ScopedVariableName
+        }
+    | EvaluationErrorOnlyDeeperInInvalidVariableSubstitution
+        { variable : ScopedVariableName
+        , value : ValueWithVariableName ScopedVariableName
+        }
+
+
+type WhyValid
+    = ValidBecauseAllEmpty
+    | ValidBecauseVariableEqualToItself ScopedVariableName
+    | ValidBecauseEquatingSameEmptyLookups
+    | ValueBecauseNotOfInvalid WhyInvalid
+
+
+type WhyInvalid
+    = InvalidBecauseAnyEmpty
+    | InvalidBecauseVariableNotEqualToItself ScopedVariableName
+    | InvalidBecauseEquatingValuesWithDifferentEntryKeys String
+    | InvalidBecauseNotOfValid WhyValid
 
 
 scopedVariableNameToString : ScopedVariableName -> String
@@ -135,6 +162,193 @@ scopeRegionToString =
 
             ScopeRegionIntoUseRelation identifier ->
                 identifier
+
+
+whyValidToString : WhyValid -> String
+whyValidToString =
+    \whyValid ->
+        case whyValid of
+            ValueBecauseNotOfInvalid inverseError ->
+                -- TODO better error?
+                "not " ++ (inverseError |> whyInvalidToString)
+
+            ValidBecauseVariableEqualToItself variableName ->
+                [ "variable "
+                , variableName |> scopedVariableNameToString
+                , " is set as equal to itself, which means all values are possible for the result. Add some constructive constraints so I can choose a good value."
+                ]
+                    |> String.concat
+
+            ValidBecauseEquatingSameEmptyLookups ->
+                "an empty lookup is set as equal to another empty lookup, which means all values are possible for the result. Add some constructive constraints so I can choose a good value."
+
+            ValidBecauseAllEmpty ->
+                "empty all, which means all values are possible for the result. Add some constructive constraints in the all so I can choose a good value."
+
+
+whyInvalidToString : WhyInvalid -> String
+whyInvalidToString =
+    \whyInvalid ->
+        case whyInvalid of
+            InvalidBecauseNotOfValid inverseError ->
+                -- TODO better error?
+                "not " ++ (inverseError |> whyValidToString)
+
+            InvalidBecauseAnyEmpty ->
+                "empty any, which means no branches will ever result in a result. Add some facts inside the any or remove it."
+
+            InvalidBecauseVariableNotEqualToItself variableName ->
+                [ "expected variables "
+                , variableName |> scopedVariableNameToString
+                , " and "
+                , variableName |> scopedVariableNameToString
+                , " to be different but they're the same. Maybe you wanted to equate it with a different variable?"
+                ]
+                    |> String.concat
+
+            InvalidBecauseEquatingValuesWithDifferentEntryKeys entryKey ->
+                [ "equating a value with an entry key "
+                , entryKey
+                , " with a value that does not contain this key."
+                ]
+                    |> String.concat
+
+
+valueToString : ValueWithVariableName ScopedVariableName -> String
+valueToString =
+    \value ->
+        case value of
+            Variable variableName ->
+                variableName |> scopedVariableNameToString
+
+            ValueLookup valueLookup ->
+                [ "{"
+                , valueLookup
+                    |> FastDict.toList
+                    |> List.map
+                        (\( entryName, entryValue ) ->
+                            [ entryName, " ", entryValue |> valueToString ] |> String.concat
+                        )
+                    |> String.join " , "
+                , "}"
+                ]
+                    |> String.concat
+
+
+evaluationErrorToString : EvaluationError -> String
+evaluationErrorToString =
+    \evaluationError ->
+        case evaluationError of
+            EvaluationErrorInvalid whyInvalid ->
+                whyInvalid |> whyInvalidToString
+
+            EvaluationErrorValid whyValid ->
+                whyValid |> whyValidToString
+
+            EvaluationErrorMainRelationNotDefined ->
+                "The relation \"main\" used to run the whole app isn't defined. Define it."
+
+            EvaluationErrorRelationNotDefined identifier ->
+                [ "The used relation "
+                , identifier
+                , " isn't defined. Define it or choose a differently named relation."
+                ]
+                    |> String.concat
+
+            EvaluationErrorAllBranchesHaveStopped branchExpansionStops ->
+                "In every branch I've tried, evaluation has stopped but none returned a concrete value: "
+                    ++ (branchExpansionStops
+                            |> List.map evaluationErrorToString
+                            |> String.join "\n"
+                       )
+
+            EvaluationErrorNoConcreteSolutionAny expanded ->
+                "the result isn't constrained to a specific solution. Here's what I figured out: "
+                    ++ (expanded.factExpansionAny
+                            |> List.map factExpansionAllToString
+                            |> String.join "\n"
+                       )
+
+            EvaluationErrorOnlyDeeperInValidVariableSubstitution substitution ->
+                [ "I was only able to determine the value for a variable in a used relation: "
+                , substitution.variable |> scopedVariableNameToString
+                , " = "
+                , substitution.value |> valueToString
+                , ". Try to connect this value to the argument variable(s) of that relation."
+                ]
+                    |> String.concat
+
+            EvaluationErrorOnlyDeeperInInvalidVariableSubstitution invalidSubstitution ->
+                [ "We only know that variable "
+                , invalidSubstitution.variable |> scopedVariableNameToString
+                , " is NOT equal to "
+                , invalidSubstitution.value |> valueToString
+                , " which is too little constraint to produce a solution"
+                ]
+                    |> String.concat
+
+
+factExpansionAllToString : FactExpansionAll -> String
+factExpansionAllToString =
+    \factExpansionAll ->
+        [ "("
+        , factExpansionAll.factExpansionAll |> List.map factExpansionPartToString |> String.join " and "
+        , ")"
+        ]
+            |> String.concat
+
+
+factExpansionPartToString : FactExpansionPart -> String
+factExpansionPartToString =
+    \factExpansionPart ->
+        case factExpansionPart of
+            FactExpansionPartValid whyValid ->
+                [ "✅\"", whyValid |> whyValidToString, "\"" ] |> String.concat
+
+            FactExpansionPartInvalid whyInvalid ->
+                [ "❌\"", whyInvalid |> whyInvalidToString, "\"" ] |> String.concat
+
+            FactExpansionPartValidVariableSubstitution substitution ->
+                [ "("
+                , substitution.variable |> scopedVariableNameToString
+                , " = "
+                , substitution.value |> valueToString
+                , ")"
+                ]
+                    |> String.concat
+
+            FactExpansionPartInvalidVariableSubstitution substitution ->
+                [ "("
+                , substitution.variable |> scopedVariableNameToString
+                , " ≠ "
+                , substitution.value |> valueToString
+                , ")"
+                ]
+                    |> String.concat
+
+            FactExpansionPartValidRelation relation ->
+                [ "("
+                , relation.identifier
+                , " "
+                , relation.argument |> valueToString
+                , ")"
+                ]
+                    |> String.concat
+
+            FactExpansionPartInvalidRelation relation ->
+                [ "(not ("
+                , relation.identifier
+                , " "
+                , relation.argument |> valueToString
+                , "))"
+                ]
+                    |> String.concat
+
+
+factExpansionAnySingleton : FactExpansionAll -> FactExpansionAny
+factExpansionAnySingleton =
+    \factExpansionAll ->
+        { factExpansionAny = factExpansionAll |> List.singleton }
 
 
 factExpansionAllSingleton : FactExpansionPart -> FactExpansionAll
@@ -209,13 +423,7 @@ equal2Expand =
 
             ( Variable aVariableName, Variable bVariableName ) ->
                 if aVariableName == bVariableName then
-                    FactExpansionPartValid
-                        ([ "variable "
-                         , aVariableName |> scopedVariableNameToString
-                         , " equal to itself"
-                         ]
-                            |> String.concat
-                        )
+                    FactExpansionPartValid (ValidBecauseVariableEqualToItself aVariableName)
                         |> factExpansionAllSingleton
 
                 else
@@ -228,39 +436,39 @@ equal2Expand =
                         |> factExpansionAllSingleton
 
             ( ValueLookup aLookup, ValueLookup bLookup ) ->
-                let
-                    entriesExpanded : Result String (List FactExpansionAll)
-                    entriesExpanded =
-                        FastDict.merge
-                            (\entryKey _ _ -> Err entryKey)
-                            (\_ aEntryValue bEntryValue soFar ->
-                                case soFar of
-                                    Err entryKey ->
-                                        Err entryKey
+                if (aLookup |> FastDict.isEmpty) && (bLookup |> FastDict.isEmpty) then
+                    FactExpansionPartValid ValidBecauseEquatingSameEmptyLookups
+                        |> factExpansionAllSingleton
 
-                                    Ok expandedSoFar ->
-                                        ({ a = aEntryValue, b = bEntryValue } |> equal2Expand)
-                                            :: expandedSoFar
-                                            |> Ok
-                            )
-                            (\entryKey _ _ -> Err entryKey)
-                            aLookup
-                            bLookup
-                            (Ok [])
-                in
-                case entriesExpanded of
-                    Err entryKey ->
-                        FactExpansionPartInvalid
-                            ([ "equating a value with an entry key "
-                             , entryKey
-                             , " with a value that does not contain this key."
-                             ]
-                                |> String.concat
-                            )
-                            |> factExpansionAllSingleton
+                else
+                    let
+                        entriesExpanded : Result String (List FactExpansionAll)
+                        entriesExpanded =
+                            FastDict.merge
+                                (\entryKey _ _ -> Err entryKey)
+                                (\_ aEntryValue bEntryValue soFar ->
+                                    case soFar of
+                                        Err entryKey ->
+                                            Err entryKey
 
-                    Ok expanded ->
-                        { factExpansionAll = expanded |> List.concatMap .factExpansionAll }
+                                        Ok expandedSoFar ->
+                                            ({ a = aEntryValue, b = bEntryValue } |> equal2Expand)
+                                                :: expandedSoFar
+                                                |> Ok
+                                )
+                                (\entryKey _ _ -> Err entryKey)
+                                aLookup
+                                bLookup
+                                (Ok [])
+                    in
+                    case entriesExpanded of
+                        Err entryKey ->
+                            FactExpansionPartInvalid
+                                (InvalidBecauseEquatingValuesWithDifferentEntryKeys entryKey)
+                                |> factExpansionAllSingleton
+
+                        Ok expanded ->
+                            { factExpansionAll = expanded |> List.concatMap .factExpansionAll }
 
 
 factExpansionAnyInvert : FactExpansionAny -> FactExpansionAll
@@ -289,12 +497,10 @@ factExpansionPartInvert =
     \factExpansionPart ->
         case factExpansionPart of
             FactExpansionPartValid whyValid ->
-                -- TODO better error?
-                FactExpansionPartInvalid ("not " ++ whyValid)
+                FactExpansionPartInvalid (InvalidBecauseNotOfValid whyValid)
 
             FactExpansionPartInvalid whyInvalid ->
-                -- TODO better error?
-                FactExpansionPartValid ("not " ++ whyInvalid)
+                FactExpansionPartValid (ValueBecauseNotOfInvalid whyInvalid)
 
             FactExpansionPartValidRelation relation ->
                 FactExpansionPartInvalidRelation relation
@@ -372,12 +578,12 @@ factExpand context fact =
 
 {-| Find a value that satisfies the constraints for an argument variable in the main definition
 -}
-evaluate : Project -> Result String Lookup
+evaluate : Project -> Result EvaluationError Lookup
 evaluate =
     \project ->
         case project.relationDefinitions |> FastDict.get "main" of
             Nothing ->
-                Err "The relation \"main\" isn't defined. Define it."
+                Err EvaluationErrorMainRelationNotDefined
 
             Just mainImplementation ->
                 RelationUse
@@ -390,7 +596,7 @@ evaluate =
                     |> factExpansionAnyExpandFully project
 
 
-factExpansionAnyExpandFully : Project -> (FactExpansionAny -> Result String Lookup)
+factExpansionAnyExpandFully : Project -> (FactExpansionAny -> Result EvaluationError Lookup)
 factExpansionAnyExpandFully project =
     \factExpansionAny ->
         let
@@ -436,78 +642,83 @@ factExpansionAnyExpandFully project =
                                         ExpansionFailed _ ->
                                             Nothing
                                 )
+                in
+                case expandableBranchFacts |> List.LauExtra.allOkMap (\branch -> branch |> factExpansionAllExpand project) of
+                    Err error ->
+                        EvaluationErrorRelationNotDefined error.relationNotDefined |> Err
 
-                    determinedOrNeedsExpanding : Result (List FactExpansionAll) Lookup
-                    determinedOrNeedsExpanding =
-                        expandableBranchFacts
-                            |> List.concatMap (\branch -> branch |> factExpansionAllExpand project |> .factExpansionAny)
-                            |> List.foldl
-                                (\branchExpanded soFar ->
-                                    case soFar of
-                                        Ok determined ->
-                                            determined |> Ok
-
-                                        Err soFarBranchesNeedExpanding ->
-                                            case branchExpanded |> factExpansionAllToExpandedStatus of
-                                                ExpandedToLookup determined ->
+                    Ok branchExpansions ->
+                        let
+                            determinedOrNeedsExpanding : Result (List FactExpansionAll) Lookup
+                            determinedOrNeedsExpanding =
+                                branchExpansions
+                                    |> List.concatMap (\branchExpansion -> branchExpansion |> .factExpansionAny)
+                                    |> List.foldl
+                                        (\branchExpanded soFar ->
+                                            case soFar of
+                                                Ok determined ->
                                                     determined |> Ok
 
-                                                _ ->
-                                                    branchExpanded :: soFarBranchesNeedExpanding |> Err
-                                )
-                                (Err [])
-                in
-                case determinedOrNeedsExpanding of
-                    Ok determined ->
-                        determined |> Ok
+                                                Err soFarBranchesNeedExpanding ->
+                                                    case branchExpanded |> factExpansionAllToExpandedStatus of
+                                                        ExpandedToLookup determined ->
+                                                            determined |> Ok
 
-                    Err [] ->
-                        let
-                            branchExpansionStops : List String
-                            branchExpansionStops =
-                                branchesExpandedStatues
-                                    |> List.filterMap
-                                        (\branchExpandedStatus ->
-                                            case branchExpandedStatus of
-                                                ExpansionFailed whyFailed ->
-                                                    whyFailed |> Just
-
-                                                ExpansionNeedsToContinue _ ->
-                                                    Nothing
-
-                                                ExpandedToLookup _ ->
-                                                    Nothing
+                                                        _ ->
+                                                            branchExpanded :: soFarBranchesNeedExpanding |> Err
                                         )
+                                        (Err [])
                         in
-                        Err
-                            ("In every branch I've tried, evaluation has stopped but none returned a concrete value: "
-                                ++ (branchExpansionStops |> String.join "\n")
-                            )
+                        case determinedOrNeedsExpanding of
+                            Ok determined ->
+                                determined |> Ok
 
-                    Err needsExpanding ->
-                        if needsExpanding == expandableBranchFacts then
-                            Err
-                                ("the result isn't constrained to a specific solution. Here's what I figured out: "
-                                    ++ (needsExpanding |> List.map factExpansionAllToString |> String.join "\n")
-                                )
+                            Err [] ->
+                                let
+                                    branchExpansionStops : List EvaluationError
+                                    branchExpansionStops =
+                                        branchesExpandedStatues
+                                            |> List.filterMap
+                                                (\branchExpandedStatus ->
+                                                    case branchExpandedStatus of
+                                                        ExpansionFailed whyFailed ->
+                                                            whyFailed |> Just
 
-                        else
-                            {- let
-                                   _ =
-                                       Debug.log
-                                           ([ "------------------------ all facts expanded to --------------------------\n"
-                                            , needsExpanding
-                                               |> List.map (\factBranch -> "  - " ++ (factBranch |> factExpansionAllToString))
-                                               |> String.join "\n"
-                                            , "\n"
-                                            ]
-                                               |> String.concat
-                                           )
-                                           ()
-                               in
-                            -}
-                            { factExpansionAny = needsExpanding }
-                                |> factExpansionAnyExpandFully project
+                                                        ExpansionNeedsToContinue _ ->
+                                                            Nothing
+
+                                                        ExpandedToLookup _ ->
+                                                            Nothing
+                                                )
+                                in
+                                case branchExpansionStops of
+                                    [] ->
+                                        Err (EvaluationErrorInvalid InvalidBecauseAnyEmpty)
+
+                                    branchExpansionStop0 :: branchExpansionStop1Up ->
+                                        Err (EvaluationErrorAllBranchesHaveStopped (branchExpansionStop0 :: branchExpansionStop1Up))
+
+                            Err needsExpanding ->
+                                if needsExpanding == expandableBranchFacts then
+                                    Err (EvaluationErrorNoConcreteSolutionAny { factExpansionAny = needsExpanding })
+
+                                else
+                                    {- let
+                                           _ =
+                                               Debug.log
+                                                   ([ "------------------------ all facts expanded to --------------------------\n"
+                                                       , needsExpanding
+                                                       |> List.map (\factBranch -> "  - " ++ (factBranch |> factExpansionAllToString))
+                                                       |> String.join "\n"
+                                                       , "\n"
+                                                       ]
+                                                       |> String.concat
+                                                   )
+                                                   ()
+                                       in
+                                    -}
+                                    { factExpansionAny = needsExpanding }
+                                        |> factExpansionAnyExpandFully project
 
 
 factExpansionAllToExpandedStatus : FactExpansionAll -> ExpandedStatus
@@ -515,34 +726,13 @@ factExpansionAllToExpandedStatus =
     \factExpansionAll ->
         case factExpansionAll.factExpansionAll of
             [] ->
-                ExpansionFailed "empty all"
+                ExpansionFailed (EvaluationErrorValid ValidBecauseAllEmpty)
 
             [ onlyPart ] ->
                 onlyPart |> factExpansionPartToExpandedStatus
 
             part0 :: part1Up ->
                 ExpansionNeedsToContinue { factExpansionAll = part0 :: part1Up }
-
-
-valueToString : ValueWithVariableName ScopedVariableName -> String
-valueToString =
-    \value ->
-        case value of
-            Variable variableName ->
-                variableName |> scopedVariableNameToString
-
-            ValueLookup valueLookup ->
-                [ "{"
-                , valueLookup
-                    |> FastDict.toList
-                    |> List.map
-                        (\( entryName, entryValue ) ->
-                            [ entryName, " ", entryValue |> valueToString ] |> String.concat
-                        )
-                    |> String.join " , "
-                , "}"
-                ]
-                    |> String.concat
 
 
 valueToValueLookup :
@@ -576,21 +766,8 @@ factExpansionPartToExpandedStatus =
                                 ExpandedToLookup lookup
 
                     _ :: _ ->
-                        case substitution.value |> valueToValueLookup |> Maybe.andThen valueLookupToLookup of
-                            Just lookup ->
-                                ExpansionFailed
-                                    ([ "I was only able to determine the value for a variable in a used relation: "
-                                     , substitution.variable |> scopedVariableNameToString
-                                     , " = "
-                                     , lookup |> lookupToString
-                                     , ". Try to connect this value to the argument variable(s) of that relation."
-                                     ]
-                                        |> String.concat
-                                    )
-
-                            Nothing ->
-                                ExpansionNeedsToContinue
-                                    (FactExpansionPartValidVariableSubstitution substitution |> factExpansionAllSingleton)
+                        ExpansionFailed
+                            (EvaluationErrorOnlyDeeperInValidVariableSubstitution substitution)
 
             FactExpansionPartValidRelation validRelation ->
                 ExpansionNeedsToContinue
@@ -601,27 +778,14 @@ factExpansionPartToExpandedStatus =
                     (FactExpansionPartInvalidRelation invalidRelation |> factExpansionAllSingleton)
 
             FactExpansionPartValid whyValid ->
-                ExpansionFailed
-                    ([ "all values are possible: "
-                     , whyValid
-                     , ". Add some constructive constraints so I can choose a good value"
-                     ]
-                        |> String.concat
-                    )
+                ExpansionFailed (EvaluationErrorValid whyValid)
 
             FactExpansionPartInvalid whyInvalid ->
-                ExpansionFailed whyInvalid
+                ExpansionFailed (EvaluationErrorInvalid whyInvalid)
 
             FactExpansionPartInvalidVariableSubstitution invalidSubstitution ->
                 ExpansionFailed
-                    ([ "We only know that variable "
-                     , invalidSubstitution.variable |> scopedVariableNameToString
-                     , " is NOT equivalent to "
-                     , invalidSubstitution.value |> valueToString
-                     , " which is too little constraint to produce a solution"
-                     ]
-                        |> String.concat
-                    )
+                    (EvaluationErrorOnlyDeeperInInvalidVariableSubstitution invalidSubstitution)
 
 
 valueLookupToLookup : FastDict.Dict String (ValueWithVariableName variableName_) -> Maybe Lookup
@@ -637,77 +801,28 @@ valueLookupToLookup =
             |> Maybe.map (\entries -> entries |> FastDict.fromList |> Lookup)
 
 
-factExpansionAllToString : FactExpansionAll -> String
-factExpansionAllToString =
-    \factExpansionAll ->
-        [ "("
-        , factExpansionAll.factExpansionAll |> List.map factExpansionPartToString |> String.join " and "
-        , ")"
-        ]
-            |> String.concat
-
-
-factExpansionPartToString : FactExpansionPart -> String
-factExpansionPartToString =
-    \factExpansionPart ->
-        case factExpansionPart of
-            FactExpansionPartValid whyValid ->
-                [ "✅\"", whyValid, "\"" ] |> String.concat
-
-            FactExpansionPartInvalid whyInvalid ->
-                [ "❌\"", whyInvalid, "\"" ] |> String.concat
-
-            FactExpansionPartValidVariableSubstitution substitution ->
-                [ "("
-                , substitution.variable |> scopedVariableNameToString
-                , " = "
-                , substitution.value |> valueToString
-                , ")"
-                ]
-                    |> String.concat
-
-            FactExpansionPartInvalidVariableSubstitution substitution ->
-                [ "("
-                , substitution.variable |> scopedVariableNameToString
-                , " ≠ "
-                , substitution.value |> valueToString
-                , ")"
-                ]
-                    |> String.concat
-
-            FactExpansionPartValidRelation relation ->
-                [ "("
-                , relation.identifier
-                , " "
-                , relation.argument |> valueToString
-                , ")"
-                ]
-                    |> String.concat
-
-            FactExpansionPartInvalidRelation relation ->
-                [ "(not ("
-                , relation.identifier
-                , " "
-                , relation.argument |> valueToString
-                , "))"
-                ]
-                    |> String.concat
-
-
-factExpansionAllExpand : Project -> (FactExpansionAll -> FactExpansionAny)
+factExpansionAllExpand : Project -> (FactExpansionAll -> Result { relationNotDefined : String } FactExpansionAny)
 factExpansionAllExpand project =
     \factExpansionAll ->
         case factExpansionAll.factExpansionAll of
             [] ->
-                FactExpansionPartValid "empty all" |> factExpansionAllSingleton |> factExpansionAnySingleton
+                FactExpansionPartValid ValidBecauseAllEmpty
+                    |> factExpansionAllSingleton
+                    |> factExpansionAnySingleton
+                    |> Ok
 
             [ only ] ->
-                only |> factExpansionPartExpand project
+                only
+                    |> factExpansionPartExpand project
+                    |> Result.mapError (\error -> { relationNotDefined = error.relationNotDefined })
 
             onePart :: twoPart :: otherParts ->
                 case (onePart :: twoPart :: otherParts) |> List.LauExtra.firstJustMap factExpansionPartIsInvalid of
                     Just reason ->
-                        FactExpansionPartInvalid reason |> factExpansionAllSingleton |> factExpansionAnySingleton
+                        FactExpansionPartInvalid reason
+                            |> factExpansionAllSingleton
+                            |> factExpansionAnySingleton
+                            |> Ok
 
                     Nothing ->
                         let
@@ -745,15 +860,21 @@ factExpansionAllExpand project =
                         in
                         case variableSubstitutionParts of
                             [] ->
-                                { factExpansionAny =
-                                    notObviouslyValidParts
-                                        |> List.map (\part -> part |> factExpansionPartExpand project |> .factExpansionAny)
-                                        |> List.LauExtra.oneOfEach
-                                        |> List.map
-                                            (\newBranch ->
-                                                { factExpansionAll = newBranch |> List.concatMap .factExpansionAll }
-                                            )
-                                }
+                                case notObviouslyValidParts |> List.LauExtra.allOkMap (\part -> part |> factExpansionPartExpand project) of
+                                    Err error ->
+                                        Err error
+
+                                    Ok partExpansions ->
+                                        { factExpansionAny =
+                                            partExpansions
+                                                |> List.map .factExpansionAny
+                                                |> List.LauExtra.oneOfEach
+                                                |> List.map
+                                                    (\newBranch ->
+                                                        { factExpansionAll = newBranch |> List.concatMap .factExpansionAll }
+                                                    )
+                                        }
+                                            |> Ok
 
                             oneVariableSubstitutionPart :: otherVariableSubstitutionParts ->
                                 let
@@ -782,10 +903,10 @@ factExpansionAllExpand project =
                                                _ =
                                                    Debug.log
                                                        ([ "now substituting (erasing) "
-                                                        , substitutionOfDeepestInVariable.variable |> scopedVariableNameToString
-                                                        , " for "
-                                                        , substitutionOfDeepestInVariable.value |> valueToString
-                                                        ]
+                                                           , substitutionOfDeepestInVariable.variable |> scopedVariableNameToString
+                                                           , " for "
+                                                           , substitutionOfDeepestInVariable.value |> valueToString
+                                                           ]
                                                            |> String.concat
                                                        )
                                                        ()
@@ -815,40 +936,42 @@ factExpansionAllExpand project =
                                         |> List.concatMap .factExpansionAll
                                 }
                                     |> factExpansionAnySingleton
+                                    |> Ok
 
 
-factExpansionPartExpand : Project -> (FactExpansionPart -> FactExpansionAny)
+factExpansionPartExpand : Project -> (FactExpansionPart -> Result { relationNotDefined : String } FactExpansionAny)
 factExpansionPartExpand project =
     \factExpansionPart ->
         case factExpansionPart of
             FactExpansionPartValid whyValid ->
-                FactExpansionPartValid whyValid |> factExpansionAllSingleton |> factExpansionAnySingleton
+                FactExpansionPartValid whyValid
+                    |> factExpansionAllSingleton
+                    |> factExpansionAnySingleton
+                    |> Ok
 
             FactExpansionPartInvalid whyInvalid ->
-                FactExpansionPartInvalid whyInvalid |> factExpansionAllSingleton |> factExpansionAnySingleton
+                FactExpansionPartInvalid whyInvalid
+                    |> factExpansionAllSingleton
+                    |> factExpansionAnySingleton
+                    |> Ok
 
             FactExpansionPartValidVariableSubstitution substitution ->
                 FactExpansionPartValidVariableSubstitution substitution
                     |> factExpansionAllSingleton
                     |> factExpansionAnySingleton
+                    |> Ok
 
             FactExpansionPartInvalidVariableSubstitution substitution ->
                 FactExpansionPartInvalidVariableSubstitution substitution
                     |> factExpansionAllSingleton
                     |> factExpansionAnySingleton
+                    |> Ok
 
             FactExpansionPartValidRelation relation ->
                 case project.relationDefinitions |> FastDict.get relation.identifier of
                     Nothing ->
-                        FactExpansionPartInvalid
-                            ([ "The relation "
-                             , relation.identifier
-                             , " isn't defined. Define it or choose a differently named relation."
-                             ]
-                                |> String.concat
-                            )
-                            |> factExpansionAllSingleton
-                            |> factExpansionAnySingleton
+                        { relationNotDefined = relation.identifier }
+                            |> Err
 
                     Just definition ->
                         definition.equivalentFact
@@ -864,19 +987,13 @@ factExpansionPartExpand project =
                                             }
                                 )
                             |> factExpand { scope = relation.innerScope }
+                            |> Ok
 
             FactExpansionPartInvalidRelation inverseRelation ->
                 case project.relationDefinitions |> FastDict.get inverseRelation.identifier of
                     Nothing ->
-                        FactExpansionPartInvalid
-                            ([ "The relation "
-                             , inverseRelation.identifier
-                             , " isn't defined. Define it or choose a differently named relation."
-                             ]
-                                |> String.concat
-                            )
-                            |> factExpansionAllSingleton
-                            |> factExpansionAnySingleton
+                        { relationNotDefined = inverseRelation.identifier }
+                            |> Err
 
                     Just definition ->
                         definition.equivalentFact
@@ -894,6 +1011,7 @@ factExpansionPartExpand project =
                             |> factExpand { scope = inverseRelation.innerScope }
                             |> factExpansionAnyInvert
                             |> factExpansionAnySingleton
+                            |> Ok
 
 
 valueVariablesMap :
@@ -951,7 +1069,7 @@ factVariablesMap variableChange =
                     )
 
 
-factExpansionPartIsInvalid : FactExpansionPart -> Maybe String
+factExpansionPartIsInvalid : FactExpansionPart -> Maybe WhyInvalid
 factExpansionPartIsInvalid =
     \factExpansionPart ->
         case factExpansionPart of
@@ -1028,14 +1146,7 @@ different2Expand =
             ( Variable aVariable, Variable bVariable ) ->
                 if aVariable == bVariable then
                     FactExpansionPartInvalid
-                        ([ "expected variables "
-                         , aVariable.name
-                         , " and "
-                         , bVariable.name
-                         , " to be different but they're set to be equal"
-                         ]
-                            |> String.concat
-                        )
+                        (InvalidBecauseVariableNotEqualToItself aVariable)
                         |> factExpansionAllSingleton
 
                 else
@@ -1072,17 +1183,17 @@ substitutionIsErasing =
 
             ValueLookup lookup ->
                 lookup
-                    |> dictAll
+                    |> fastDictAll
                         (\_ entryReplacement ->
                             { variable = substitution.variable, value = entryReplacement }
                                 |> substitutionIsErasing
                         )
 
 
-dictAll : (k -> v -> Bool) -> FastDict.Dict k v -> Bool
-dictAll isFound =
-    \dict ->
-        dict
+fastDictAll : (key -> value -> Bool) -> (FastDict.Dict key value -> Bool)
+fastDictAll isFound =
+    \fastDict ->
+        fastDict
             |> FastDict.restructure True
                 (\state ->
                     isFound state.key state.value && state.left () && state.right ()
@@ -1092,28 +1203,36 @@ dictAll isFound =
 type ExpandedStatus
     = ExpandedToLookup Lookup
     | ExpansionNeedsToContinue FactExpansionAll
-    | ExpansionFailed String
+    | ExpansionFailed EvaluationError
 
 
+{-| Unique identifier for a variable name during [evaluation](#evaluate) of a branch
+-}
 type alias ScopedVariableName =
     { scope : List ScopeRegion
     , name : String
     }
 
 
+{-| Part of disambiguation of variables in expanded relation uses
+-}
 type ScopeRegion
     = ScopeRegionPartAtIndex Int
     | ScopeRegionBranchAtIndex Int
     | ScopeRegionIntoUseRelation String
 
 
+{-| the [parts](#FactExpansionPart) to satisfy all in (partially) expanded form
+-}
 type alias FactExpansionAll =
     { factExpansionAll : List FactExpansionPart }
 
 
+{-| Primitive, easy to evaluate or expand part of a [`FactExpansionAll`](#FactExpansionAll)
+-}
 type FactExpansionPart
-    = FactExpansionPartValid String
-    | FactExpansionPartInvalid String
+    = FactExpansionPartValid WhyValid
+    | FactExpansionPartInvalid WhyInvalid
     | FactExpansionPartValidVariableSubstitution
         { variable : ScopedVariableName
         , value : ValueWithVariableName ScopedVariableName
@@ -1134,5 +1253,7 @@ type FactExpansionPart
         }
 
 
+{-| the possibilities to try in (partially) expanded form
+-}
 type alias FactExpansionAny =
     { factExpansionAny : List FactExpansionAll }
