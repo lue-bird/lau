@@ -195,6 +195,38 @@ valueEntryKeys =
                         (\entry -> Set.insert entry.key (entry.value |> maybeValueEntryKeys))
 
 
+relationDefinitionsUiStateToLau :
+    FastDict.Dict
+        String
+        { parameter : Maybe ValueUiState
+        , equivalentFact : Maybe FactUiState
+        }
+    -> Maybe (List Lau.RelationDefinition)
+relationDefinitionsUiStateToLau =
+    \relationDefinitionsUiState ->
+        relationDefinitionsUiState
+            |> FastDict.foldl
+                (\identifier relationInfoUiState soFar ->
+                    case soFar of
+                        Nothing ->
+                            Nothing
+
+                        Just soFarLau ->
+                            Maybe.map2
+                                (\parameter equivalentFact ->
+                                    soFarLau
+                                        |> (::)
+                                            { identifier = identifier
+                                            , parameter = parameter
+                                            , equivalentFact = equivalentFact
+                                            }
+                                )
+                                (relationInfoUiState.parameter |> Maybe.andThen valueUiStateToLau)
+                                (relationInfoUiState.equivalentFact |> Maybe.andThen factUiStateToLau)
+                )
+                (Just [])
+
+
 factUiStateToLau : FactUiState -> Maybe Lau.Fact
 factUiStateToLau =
     \factWithHoles ->
@@ -360,6 +392,72 @@ colorBrightnessScaleBy factor =
             colorComponents.alpha
 
 
+pathDArc :
+    { centerX : Float
+    , centerY : Float
+    , radius : Float
+    , startAngle : Angle
+    , angleSpan : Angle
+    }
+    -> List Svg.PathD.Segment
+pathDArc geometry =
+    let
+        arcGeometry : Arc2d.Arc2d Length.Meters coordinates
+        arcGeometry =
+            Arc2d.with
+                { centerPoint = Point2d.meters geometry.centerX geometry.centerY
+                , startAngle = geometry.startAngle |> Angle.normalize
+                , sweptAngle = geometry.angleSpan |> Angle.normalize
+                , radius = Length.meters geometry.radius
+                }
+
+        maxSegmentAngle : Angle
+        maxSegmentAngle =
+            Angle.turns (1 / 3)
+
+        numSegments : Int
+        numSegments =
+            1 + floor (abs (Quantity.ratio (arcGeometry |> Arc2d.sweptAngle) maxSegmentAngle))
+    in
+    Parameter1d.trailing numSegments
+        (\parameterValue ->
+            Svg.PathD.A
+                ( Arc2d.radius arcGeometry |> Length.inMeters
+                , Arc2d.radius arcGeometry |> Length.inMeters
+                )
+                0
+                False
+                (arcGeometry |> Arc2d.sweptAngle |> Quantity.greaterThanOrEqualTo Quantity.zero)
+                (Arc2d.pointOn arcGeometry parameterValue |> Point2d.toTuple Length.inMeters)
+        )
+
+
+pathSegmentBottomLeftQuarterArcCounterclockwise :
+    { end : { x : Float, y : Float }, radius : Float }
+    -> List Svg.PathD.Segment
+pathSegmentBottomLeftQuarterArcCounterclockwise geometry =
+    pathDArc
+        { centerX = geometry.end.x + geometry.radius
+        , centerY = geometry.end.y
+        , radius = geometry.radius
+        , startAngle = Angle.turns (1 / 4)
+        , angleSpan = Angle.turns (1 / 4)
+        }
+
+
+pathSegmentBottomRightQuarterArcCounterclockwise :
+    { end : { x : Float, y : Float }, radius : Float }
+    -> List Svg.PathD.Segment
+pathSegmentBottomRightQuarterArcCounterclockwise geometry =
+    pathDArc
+        { centerX = geometry.end.x
+        , centerY = geometry.end.y - geometry.radius
+        , radius = geometry.radius
+        , startAngle = Angle.turns 0
+        , angleSpan = Angle.turns (1 / 4)
+        }
+
+
 sizedSvgRoundedRect :
     List (Web.Dom.Modifier future)
     -> { width : Float, height : Float, radius : Float }
@@ -409,68 +507,6 @@ svgClosedPath modifiers segments =
         []
 
 
-svgOpenPath :
-    List (Web.Dom.Modifier future)
-    -> { start : { x : Float, y : Float }, trail : List Svg.PathD.Segment }
-    -> Web.Dom.Node future
-svgOpenPath modifiers segments =
-    Web.Svg.element "path"
-        (Web.Dom.attribute "d"
-            (Svg.PathD.pathD
-                (case segments.trail of
-                    [] ->
-                        []
-
-                    trailSegment0 :: trailSegment1Up ->
-                        Svg.PathD.M ( segments.start.x, segments.start.y )
-                            :: (trailSegment0 :: trailSegment1Up)
-                )
-            )
-            :: modifiers
-        )
-        []
-
-
-pathDArc :
-    { centerX : Float
-    , centerY : Float
-    , radius : Float
-    , startAngle : Angle
-    , angleSpan : Angle
-    }
-    -> List Svg.PathD.Segment
-pathDArc geometry =
-    let
-        arcGeometry : Arc2d.Arc2d Length.Meters coordinates
-        arcGeometry =
-            Arc2d.with
-                { centerPoint = Point2d.meters geometry.centerX geometry.centerY
-                , startAngle = geometry.startAngle |> Angle.normalize
-                , sweptAngle = geometry.angleSpan |> Angle.normalize
-                , radius = Length.meters geometry.radius
-                }
-
-        maxSegmentAngle : Angle
-        maxSegmentAngle =
-            Angle.turns (1 / 3)
-
-        numSegments : Int
-        numSegments =
-            1 + floor (abs (Quantity.ratio (arcGeometry |> Arc2d.sweptAngle) maxSegmentAngle))
-    in
-    Parameter1d.trailing numSegments
-        (\parameterValue ->
-            Svg.PathD.A
-                ( Arc2d.radius arcGeometry |> Length.inMeters
-                , Arc2d.radius arcGeometry |> Length.inMeters
-                )
-                0
-                False
-                (arcGeometry |> Arc2d.sweptAngle |> Quantity.greaterThanOrEqualTo Quantity.zero)
-                (Arc2d.pointOn arcGeometry parameterValue |> Point2d.toTuple Length.inMeters)
-        )
-
-
 pathSegmentTopRightQuarterArcCounterclockwise :
     { end : { x : Float, y : Float }, radius : Float }
     -> List Svg.PathD.Segment
@@ -493,32 +529,6 @@ pathSegmentTopLeftQuarterArcCounterclockwise geometry =
         , centerY = geometry.end.y + geometry.radius
         , radius = geometry.radius
         , startAngle = Angle.turns (1 / 2)
-        , angleSpan = Angle.turns (1 / 4)
-        }
-
-
-pathSegmentBottomLeftQuarterArcCounterclockwise :
-    { end : { x : Float, y : Float }, radius : Float }
-    -> List Svg.PathD.Segment
-pathSegmentBottomLeftQuarterArcCounterclockwise geometry =
-    pathDArc
-        { centerX = geometry.end.x + geometry.radius
-        , centerY = geometry.end.y
-        , radius = geometry.radius
-        , startAngle = Angle.turns (1 / 4)
-        , angleSpan = Angle.turns (1 / 4)
-        }
-
-
-pathSegmentBottomRightQuarterArcCounterclockwise :
-    { end : { x : Float, y : Float }, radius : Float }
-    -> List Svg.PathD.Segment
-pathSegmentBottomRightQuarterArcCounterclockwise geometry =
-    pathDArc
-        { centerX = geometry.end.x
-        , centerY = geometry.end.y - geometry.radius
-        , radius = geometry.radius
-        , startAngle = Angle.turns 0
         , angleSpan = Angle.turns (1 / 4)
         }
 
@@ -555,15 +565,6 @@ fontWidth =
     fontSize * 0.56
 
 
-sizedSvgUnselectableText : String -> SizedSvg future_
-sizedSvgUnselectableText string =
-    sizedSvgText
-        [ Web.Dom.style "user-select" "none"
-        , Web.Dom.style "pointer-events" "none"
-        ]
-        string
-
-
 sizedSvgText : List (Web.Dom.Modifier future) -> String -> SizedSvg future
 sizedSvgText modifiers string =
     let
@@ -590,12 +591,13 @@ fontBaseline =
     0.77
 
 
-svgStack :
-    List (Web.Dom.Modifier future)
-    -> List (Web.Dom.Node future)
-    -> Web.Dom.Node future
-svgStack modifiers subs =
-    Web.Svg.element "g" modifiers subs
+sizedSvgUnselectableText : String -> SizedSvg future_
+sizedSvgUnselectableText string =
+    sizedSvgText
+        [ Web.Dom.style "user-select" "none"
+        , Web.Dom.style "pointer-events" "none"
+        ]
+        string
 
 
 svgAttributeTranslate : { x : Float, y : Float } -> Web.Dom.Modifier future_
@@ -609,6 +611,14 @@ svgAttributeTranslate offset =
          ]
             |> String.concat
         )
+
+
+svgStack :
+    List (Web.Dom.Modifier future)
+    -> List (Web.Dom.Node future)
+    -> Web.Dom.Node future
+svgStack modifiers subs =
+    Web.Svg.element "g" modifiers subs
 
 
 sizedSvgPad :
@@ -1197,6 +1207,25 @@ sizedSvgStack modifiers elements =
     }
 
 
+variableSvgWithInteractivity :
+    { dragStart : Web.Dom.Modifier future
+    , variableNameSvg : SizedSvg future
+    }
+    -> SizedSvg future
+variableSvgWithInteractivity interactivity =
+    sizedSvgStack []
+        [ sizedSvgRoundedRect
+            [ domModifierFillUniform variableBackgroundColor
+            , interactivity.dragStart
+            ]
+            { width = interactivity.variableNameSvg.width
+            , height = interactivity.variableNameSvg.height
+            , radius = strokeWidth
+            }
+        , interactivity.variableNameSvg
+        ]
+
+
 variableBackgroundColor : Color
 variableBackgroundColor =
     Color.rgb 0 0.19 0.21
@@ -1215,25 +1244,6 @@ variableShapeSvg variableName =
                     , bottom = strokeWidth / 2
                     }
         }
-
-
-variableSvgWithInteractivity :
-    { dragStart : Web.Dom.Modifier future
-    , variableNameSvg : SizedSvg future
-    }
-    -> SizedSvg future
-variableSvgWithInteractivity interactivity =
-    sizedSvgStack []
-        [ sizedSvgRoundedRect
-            [ domModifierFillUniform variableBackgroundColor
-            , interactivity.dragStart
-            ]
-            { width = interactivity.variableNameSvg.width
-            , height = interactivity.variableNameSvg.height
-            , radius = strokeWidth
-            }
-        , interactivity.variableNameSvg
-        ]
 
 
 valueSvg :
@@ -1671,28 +1681,6 @@ valueLookupShapeSvg valueLookup =
                     }
                 , entryListSvg
                 ]
-
-
-relationDefinitionSvgWithInteractivity :
-    { identifier : SizedSvg future
-    , parameter : SizedSvg future
-    , equivalentFact : SizedSvg future
-    }
-    -> SizedSvg future
-relationDefinitionSvgWithInteractivity definition =
-    svgSizedVertical
-        [ relationUseSvgWithInteractivity
-            { shapeEventListenModifier = Web.Dom.modifierNone
-            , identifier = definition.identifier
-            , argumentSvg = definition.parameter
-            }
-            |> sizedSvgPad
-                { left = 0, right = 0, top = 0, bottom = strokeWidth }
-        , sizedSvgUnselectableText "is equivalent to"
-            |> sizedSvgPad
-                { left = 0, right = 0, top = 0, bottom = strokeWidth }
-        , definition.equivalentFact
-        ]
 
 
 interface : State -> Web.Interface State
@@ -2374,6 +2362,28 @@ sizedSvgRenameButton =
             }
 
 
+svgOpenPath :
+    List (Web.Dom.Modifier future)
+    -> { start : { x : Float, y : Float }, trail : List Svg.PathD.Segment }
+    -> Web.Dom.Node future
+svgOpenPath modifiers segments =
+    Web.Svg.element "path"
+        (Web.Dom.attribute "d"
+            (Svg.PathD.pathD
+                (case segments.trail of
+                    [] ->
+                        []
+
+                    trailSegment0 :: trailSegment1Up ->
+                        Svg.PathD.M ( segments.start.x, segments.start.y )
+                            :: (trailSegment0 :: trailSegment1Up)
+                )
+            )
+            :: modifiers
+        )
+        []
+
+
 svgSizedTextInput : String -> SizedSvg TextInputUiState
 svgSizedTextInput currentString =
     let
@@ -2559,6 +2569,28 @@ relationDefinitionSvg dragState definition =
                         }
                     )
         }
+
+
+relationDefinitionSvgWithInteractivity :
+    { identifier : SizedSvg future
+    , parameter : SizedSvg future
+    , equivalentFact : SizedSvg future
+    }
+    -> SizedSvg future
+relationDefinitionSvgWithInteractivity definition =
+    svgSizedVertical
+        [ relationUseSvgWithInteractivity
+            { shapeEventListenModifier = Web.Dom.modifierNone
+            , identifier = definition.identifier
+            , argumentSvg = definition.parameter
+            }
+            |> sizedSvgPad
+                { left = 0, right = 0, top = 0, bottom = strokeWidth }
+        , sizedSvgUnselectableText "is equivalent to"
+            |> sizedSvgPad
+                { left = 0, right = 0, top = 0, bottom = strokeWidth }
+        , definition.equivalentFact
+        ]
 
 
 fastDictSetFlatMap :

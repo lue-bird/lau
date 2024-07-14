@@ -1,8 +1,8 @@
 module Lau exposing
     ( Lookup(..), ValueWithVariableName(..)
     , Fact, FactWithVariableName(..)
-    , Project, evaluate, EvaluationError(..), WhyInvalid(..), WhyValid(..)
-    , FactExpansionAll, FactExpansionAny, FactExpansionPart(..), ScopeRegion(..), ScopedVariableName, evaluationErrorToString, lookupToString
+    , evaluate, EvaluationError(..), WhyInvalid(..), WhyValid(..)
+    , FactExpansionAll, FactExpansionAny, FactExpansionPart(..), RelationDefinition, ScopeRegion(..), ScopedVariableName, evaluationErrorToString, lookupToString
     )
 
 {-| Language representation and evaluation
@@ -30,19 +30,47 @@ import FastDict
 import List.LocalExtra
 
 
-{-| A couple of relations.
-
-Needs to include a definition named "main" if you want to [evaluate](#evaluate) it.
-
+{-| What a relation with a given name and parameter is equivalent to
 -}
-type alias Project =
-    { relationDefinitions :
-        FastDict.Dict
-            String
-            { argumentVariable : String
-            , equivalentFact : Fact
-            }
+type alias RelationDefinition =
+    { identifier : String
+    , parameter : ValueWithVariableName String
+    , equivalentFact : Fact
     }
+
+
+type alias RelationDefinitionsForExpansion =
+    FastDict.Dict
+        String
+        { argumentVariable : String
+        , equivalentFact : Fact
+        }
+
+
+relationDefinitionsToForExpansion : List RelationDefinition -> RelationDefinitionsForExpansion
+relationDefinitionsToForExpansion =
+    \relationDefinitions ->
+        relationDefinitions
+            |> List.foldl
+                (\relationDefinition soFar ->
+                    let
+                        internalParameterVariableName =
+                            "__internal__argument variable"
+                    in
+                    soFar
+                        |> FastDict.insert relationDefinition.identifier
+                            { argumentVariable = internalParameterVariableName
+                            , equivalentFact =
+                                All
+                                    [ Equal
+                                        { a = Variable internalParameterVariableName
+                                        , b = relationDefinition.parameter
+                                        }
+                                    , relationDefinition.equivalentFact
+                                    ]
+                            }
+                )
+                FastDict.empty
 
 
 {-| Something to be satisfied. Some call it rule/constraint/assertion/...
@@ -577,11 +605,19 @@ factExpand context fact =
 
 
 {-| Find a value that satisfies the constraints for an argument variable in the main definition
+
+Needs to include a definition named "main" if you want to [evaluate](#evaluate) it.
+
 -}
-evaluate : Project -> Result EvaluationError Lookup
+evaluate : List RelationDefinition -> Result EvaluationError Lookup
 evaluate =
-    \project ->
-        case project.relationDefinitions |> FastDict.get "main" of
+    \relationDefinitions ->
+        let
+            relationDefinitionsForExpansion : RelationDefinitionsForExpansion
+            relationDefinitionsForExpansion =
+                relationDefinitions |> relationDefinitionsToForExpansion
+        in
+        case relationDefinitionsForExpansion |> FastDict.get "main" of
             Nothing ->
                 Err EvaluationErrorMainRelationNotDefined
 
@@ -589,14 +625,13 @@ evaluate =
                 RelationUse
                     { identifier = "main"
                     , argument =
-                        { scope = [], name = mainImplementation.argumentVariable }
-                            |> Variable
+                        Variable { scope = [], name = mainImplementation.argumentVariable }
                     }
                     |> factExpand { scope = [] }
-                    |> factExpansionAnyExpandFully project
+                    |> factExpansionAnyExpandFully relationDefinitionsForExpansion
 
 
-factExpansionAnyExpandFully : Project -> (FactExpansionAny -> Result EvaluationError Lookup)
+factExpansionAnyExpandFully : RelationDefinitionsForExpansion -> (FactExpansionAny -> Result EvaluationError Lookup)
 factExpansionAnyExpandFully project =
     \factExpansionAny ->
         let
@@ -801,7 +836,7 @@ valueLookupToLookup =
             |> Maybe.map (\entries -> entries |> FastDict.fromList |> Lookup)
 
 
-factExpansionAllExpand : Project -> (FactExpansionAll -> Result { relationNotDefined : String } FactExpansionAny)
+factExpansionAllExpand : RelationDefinitionsForExpansion -> (FactExpansionAll -> Result { relationNotDefined : String } FactExpansionAny)
 factExpansionAllExpand project =
     \factExpansionAll ->
         case factExpansionAll.factExpansionAll of
@@ -939,8 +974,8 @@ factExpansionAllExpand project =
                                     |> Ok
 
 
-factExpansionPartExpand : Project -> (FactExpansionPart -> Result { relationNotDefined : String } FactExpansionAny)
-factExpansionPartExpand project =
+factExpansionPartExpand : RelationDefinitionsForExpansion -> (FactExpansionPart -> Result { relationNotDefined : String } FactExpansionAny)
+factExpansionPartExpand relationDefinitions =
     \factExpansionPart ->
         case factExpansionPart of
             FactExpansionPartValid whyValid ->
@@ -968,7 +1003,7 @@ factExpansionPartExpand project =
                     |> Ok
 
             FactExpansionPartValidRelation relation ->
-                case project.relationDefinitions |> FastDict.get relation.identifier of
+                case relationDefinitions |> FastDict.get relation.identifier of
                     Nothing ->
                         { relationNotDefined = relation.identifier }
                             |> Err
@@ -990,7 +1025,7 @@ factExpansionPartExpand project =
                             |> Ok
 
             FactExpansionPartInvalidRelation inverseRelation ->
-                case project.relationDefinitions |> FastDict.get inverseRelation.identifier of
+                case relationDefinitions |> FastDict.get inverseRelation.identifier of
                     Nothing ->
                         { relationNotDefined = inverseRelation.identifier }
                             |> Err

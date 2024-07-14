@@ -49,19 +49,15 @@ suite =
             )
         , Test.test "simple assignment"
             (\() ->
-                { relationDefinitions =
-                    FastDict.fromList
-                        [ ( "main"
-                          , { argumentVariable = "Result"
-                            , equivalentFact =
-                                Lau.Equal
-                                    { a = Lau.Variable "Result"
-                                    , b = Lau.ValueLookup FastDict.empty
-                                    }
+                [ { identifier = "main"
+                  , parameter = Lau.Variable "Result"
+                  , equivalentFact =
+                        Lau.Equal
+                            { a = Lau.Variable "Result"
+                            , b = Lau.ValueLookup FastDict.empty
                             }
-                          )
-                        ]
-                }
+                  }
+                ]
                     |> Lau.evaluate
                     |> Result.map Lau.lookupToString
                     |> Expect.equal
@@ -69,25 +65,21 @@ suite =
             )
         , Test.test "simple transitive assignment"
             (\() ->
-                { relationDefinitions =
-                    FastDict.fromList
-                        [ ( "main"
-                          , { argumentVariable = "Result"
-                            , equivalentFact =
-                                Lau.All
-                                    [ Lau.Equal
-                                        { a = Lau.Variable "ResultIntermediate"
-                                        , b = Lau.ValueLookup FastDict.empty
-                                        }
-                                    , Lau.Equal
-                                        { a = Lau.Variable "Result"
-                                        , b = Lau.Variable "ResultIntermediate"
-                                        }
-                                    ]
-                            }
-                          )
-                        ]
-                }
+                [ { identifier = "main"
+                  , parameter = Lau.Variable "Result"
+                  , equivalentFact =
+                        Lau.All
+                            [ Lau.Equal
+                                { a = Lau.Variable "ResultIntermediate"
+                                , b = Lau.ValueLookup FastDict.empty
+                                }
+                            , Lau.Equal
+                                { a = Lau.Variable "Result"
+                                , b = Lau.Variable "ResultIntermediate"
+                                }
+                            ]
+                  }
+                ]
                     |> Lau.evaluate
                     |> Result.map Lau.lookupToString
                     |> Expect.equal
@@ -95,25 +87,21 @@ suite =
             )
         , Test.test "simple transitive assignment of field value"
             (\() ->
-                { relationDefinitions =
-                    FastDict.fromList
-                        [ ( "main"
-                          , { argumentVariable = "Result"
-                            , equivalentFact =
-                                Lau.All
-                                    [ Lau.Equal
-                                        { a = Lau.Variable "Value"
-                                        , b = Lau.ValueLookup (FastDict.singleton "boolTrue" (Lau.ValueLookup FastDict.empty))
-                                        }
-                                    , Lau.Equal
-                                        { a = Lau.Variable "Result"
-                                        , b = Lau.ValueLookup (FastDict.singleton "maybeJust" (Lau.Variable "Value"))
-                                        }
-                                    ]
-                            }
-                          )
-                        ]
-                }
+                [ { identifier = "main"
+                  , parameter = Lau.Variable "Result"
+                  , equivalentFact =
+                        Lau.All
+                            [ Lau.Equal
+                                { a = Lau.Variable "Value"
+                                , b = Lau.ValueLookup (FastDict.singleton "boolTrue" (Lau.ValueLookup FastDict.empty))
+                                }
+                            , Lau.Equal
+                                { a = Lau.Variable "Result"
+                                , b = Lau.ValueLookup (FastDict.singleton "maybeJust" (Lau.Variable "Value"))
+                                }
+                            ]
+                  }
+                ]
                     |> Lau.evaluate
                     |> Result.map Lau.lookupToString
                     |> Expect.equal
@@ -121,29 +109,25 @@ suite =
             )
         , Test.test "simple transitive assignment of field value with intermediate variable"
             (\() ->
-                { relationDefinitions =
-                    FastDict.fromList
-                        [ ( "main"
-                          , { argumentVariable = "Result"
-                            , equivalentFact =
-                                Lau.All
-                                    [ Lau.Equal
-                                        { a = Lau.Variable "Value"
-                                        , b = Lau.ValueLookup (FastDict.singleton "boolTrue" (Lau.ValueLookup FastDict.empty))
-                                        }
-                                    , Lau.Equal
-                                        { a = Lau.Variable "IntermediateValue"
-                                        , b = Lau.Variable "Value"
-                                        }
-                                    , Lau.Equal
-                                        { a = Lau.Variable "Result"
-                                        , b = Lau.ValueLookup (FastDict.singleton "maybeJust" (Lau.Variable "IntermediateValue"))
-                                        }
-                                    ]
-                            }
-                          )
-                        ]
-                }
+                [ { identifier = "main"
+                  , parameter = Lau.Variable "Result"
+                  , equivalentFact =
+                        Lau.All
+                            [ Lau.Equal
+                                { a = Lau.Variable "Value"
+                                , b = Lau.ValueLookup (FastDict.singleton "boolTrue" (Lau.ValueLookup FastDict.empty))
+                                }
+                            , Lau.Equal
+                                { a = Lau.Variable "IntermediateValue"
+                                , b = Lau.Variable "Value"
+                                }
+                            , Lau.Equal
+                                { a = Lau.Variable "Result"
+                                , b = Lau.ValueLookup (FastDict.singleton "maybeJust" (Lau.Variable "IntermediateValue"))
+                                }
+                            ]
+                  }
+                ]
                     |> Lau.evaluate
                     |> Result.map Lau.lookupToString
                     |> Expect.equal
@@ -151,109 +135,103 @@ suite =
             )
         , Test.test "grandParent"
             (\() ->
-                { relationDefinitions =
-                    FastDict.fromList
-                        [ ( "parent"
-                          , { argumentVariable = "ToRelate"
-                            , equivalentFact =
-                                Lau.All
+                [ { identifier = "parent"
+                  , parameter = Lau.Variable "ToRelate"
+                  , equivalentFact =
+                        Lau.All
+                            [ Lau.Equal
+                                { a = Lau.Variable "ToRelate"
+                                , b =
+                                    Lau.ValueLookup
+                                        (FastDict.fromList
+                                            [ ( "parent", Lau.Variable "Parent" )
+                                            , ( "child", Lau.Variable "Child" )
+                                            ]
+                                        )
+                                }
+                            , Lau.Any
+                                [ Lau.All
                                     [ Lau.Equal
-                                        { a = Lau.Variable "ToRelate"
-                                        , b =
-                                            Lau.ValueLookup
-                                                (FastDict.fromList
-                                                    [ ( "parent", Lau.Variable "Parent" )
-                                                    , ( "child", Lau.Variable "Child" )
-                                                    ]
-                                                )
+                                        { a = Lau.Variable "Child"
+                                        , b = Lau.ValueLookup (FastDict.singleton "anna" (Lau.ValueLookup FastDict.empty))
                                         }
                                     , Lau.Any
-                                        [ Lau.All
-                                            [ Lau.Equal
-                                                { a = Lau.Variable "Child"
-                                                , b = Lau.ValueLookup (FastDict.singleton "anna" (Lau.ValueLookup FastDict.empty))
-                                                }
-                                            , Lau.Any
-                                                [ Lau.Equal
-                                                    { a = Lau.Variable "Parent"
-                                                    , b = Lau.ValueLookup (FastDict.singleton "peter" (Lau.ValueLookup FastDict.empty))
-                                                    }
-                                                , Lau.Equal
-                                                    { a = Lau.Variable "Parent"
-                                                    , b = Lau.ValueLookup (FastDict.singleton "nuhr" (Lau.ValueLookup FastDict.empty))
-                                                    }
-                                                ]
-                                            ]
-                                        , Lau.All
-                                            [ Lau.Equal
-                                                { a = Lau.Variable "Child"
-                                                , b = Lau.ValueLookup (FastDict.singleton "nuhr" (Lau.ValueLookup FastDict.empty))
-                                                }
-                                            , Lau.Any
-                                                [ Lau.Equal
-                                                    { a = Lau.Variable "Parent"
-                                                    , b = Lau.ValueLookup (FastDict.singleton "michael" (Lau.ValueLookup FastDict.empty))
-                                                    }
-                                                ]
-                                            ]
+                                        [ Lau.Equal
+                                            { a = Lau.Variable "Parent"
+                                            , b = Lau.ValueLookup (FastDict.singleton "peter" (Lau.ValueLookup FastDict.empty))
+                                            }
+                                        , Lau.Equal
+                                            { a = Lau.Variable "Parent"
+                                            , b = Lau.ValueLookup (FastDict.singleton "nuhr" (Lau.ValueLookup FastDict.empty))
+                                            }
                                         ]
                                     ]
-                            }
-                          )
-                        , ( "grandParent"
-                          , { argumentVariable = "ToRelate"
-                            , equivalentFact =
-                                Lau.All
+                                , Lau.All
                                     [ Lau.Equal
-                                        { a = Lau.Variable "ToRelate"
-                                        , b =
-                                            Lau.ValueLookup
-                                                (FastDict.fromList
-                                                    [ ( "grandParent", Lau.Variable "GrandParent" )
-                                                    , ( "grandChild", Lau.Variable "GrandChild" )
-                                                    ]
-                                                )
+                                        { a = Lau.Variable "Child"
+                                        , b = Lau.ValueLookup (FastDict.singleton "nuhr" (Lau.ValueLookup FastDict.empty))
                                         }
-                                    , Lau.RelationUse
-                                        { identifier = "parent"
-                                        , argument =
-                                            Lau.ValueLookup
-                                                (FastDict.fromList
-                                                    [ ( "parent", Lau.Variable "Parent" )
-                                                    , ( "child", Lau.Variable "GrandChild" )
-                                                    ]
-                                                )
-                                        }
-                                    , Lau.RelationUse
-                                        { identifier = "parent"
-                                        , argument =
-                                            Lau.ValueLookup
-                                                (FastDict.fromList
-                                                    [ ( "parent", Lau.Variable "GrandParent" )
-                                                    , ( "child", Lau.Variable "Parent" )
-                                                    ]
-                                                )
-                                        }
+                                    , Lau.Any
+                                        [ Lau.Equal
+                                            { a = Lau.Variable "Parent"
+                                            , b = Lau.ValueLookup (FastDict.singleton "michael" (Lau.ValueLookup FastDict.empty))
+                                            }
+                                        ]
                                     ]
+                                ]
+                            ]
+                  }
+                , { identifier = "grandParent"
+                  , parameter = Lau.Variable "ToRelate"
+                  , equivalentFact =
+                        Lau.All
+                            [ Lau.Equal
+                                { a = Lau.Variable "ToRelate"
+                                , b =
+                                    Lau.ValueLookup
+                                        (FastDict.fromList
+                                            [ ( "grandParent", Lau.Variable "GrandParent" )
+                                            , ( "grandChild", Lau.Variable "GrandChild" )
+                                            ]
+                                        )
+                                }
+                            , Lau.RelationUse
+                                { identifier = "parent"
+                                , argument =
+                                    Lau.ValueLookup
+                                        (FastDict.fromList
+                                            [ ( "parent", Lau.Variable "Parent" )
+                                            , ( "child", Lau.Variable "GrandChild" )
+                                            ]
+                                        )
+                                }
+                            , Lau.RelationUse
+                                { identifier = "parent"
+                                , argument =
+                                    Lau.ValueLookup
+                                        (FastDict.fromList
+                                            [ ( "parent", Lau.Variable "GrandParent" )
+                                            , ( "child", Lau.Variable "Parent" )
+                                            ]
+                                        )
+                                }
+                            ]
+                  }
+                , { identifier = "main"
+                  , parameter = Lau.Variable "Result"
+                  , equivalentFact =
+                        Lau.RelationUse
+                            { identifier = "grandParent"
+                            , argument =
+                                Lau.ValueLookup
+                                    (FastDict.fromList
+                                        [ ( "grandParent", Lau.Variable "Result" )
+                                        , ( "grandChild", Lau.ValueLookup (FastDict.singleton "anna" (Lau.ValueLookup FastDict.empty)) )
+                                        ]
+                                    )
                             }
-                          )
-                        , ( "main"
-                          , { argumentVariable = "Result"
-                            , equivalentFact =
-                                Lau.RelationUse
-                                    { identifier = "grandParent"
-                                    , argument =
-                                        Lau.ValueLookup
-                                            (FastDict.fromList
-                                                [ ( "grandParent", Lau.Variable "Result" )
-                                                , ( "grandChild", Lau.ValueLookup (FastDict.singleton "anna" (Lau.ValueLookup FastDict.empty)) )
-                                                ]
-                                            )
-                                    }
-                            }
-                          )
-                        ]
-                }
+                  }
+                ]
                     |> Lau.evaluate
                     |> Result.map Lau.lookupToString
                     |> Expect.equal (Ok "{michael {}}")
