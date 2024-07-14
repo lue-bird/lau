@@ -3,7 +3,7 @@ module Tests exposing (suite)
 import Expect
 import FastDict
 import Lau
-import List.LauExtra
+import List.LocalExtra
 import Test exposing (Test)
 
 
@@ -16,7 +16,7 @@ suite =
                 , [ 10, 11, 12 ]
                 , [ 20, 21, 22 ]
                 ]
-                    |> List.LauExtra.oneOfEach
+                    |> List.LocalExtra.oneOfEach
                     |> Expect.equalLists
                         [ [ 0, 10, 20 ]
                         , [ 0, 10, 21 ]

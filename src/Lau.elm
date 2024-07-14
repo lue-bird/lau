@@ -27,7 +27,7 @@ Currently I'm not super excited to do this because it will
 -}
 
 import FastDict
-import List.LauExtra
+import List.LocalExtra
 
 
 {-| A couple of relations.
@@ -551,7 +551,7 @@ factExpand context fact =
                                     }
                                 |> .factExpansionAny
                         )
-                    |> List.LauExtra.oneOfEach
+                    |> List.LocalExtra.oneOfEach
                     |> List.map
                         (\newBranch ->
                             { factExpansionAll =
@@ -608,7 +608,7 @@ factExpansionAnyExpandFully project =
             firstBranchWithLookupResult : Maybe Lookup
             firstBranchWithLookupResult =
                 branchesExpandedStatues
-                    |> List.LauExtra.firstJustMap
+                    |> List.LocalExtra.firstJustMap
                         (\branchExpandedStatus ->
                             case branchExpandedStatus of
                                 ExpansionFailed _ ->
@@ -643,7 +643,7 @@ factExpansionAnyExpandFully project =
                                             Nothing
                                 )
                 in
-                case expandableBranchFacts |> List.LauExtra.allOkMap (\branch -> branch |> factExpansionAllExpand project) of
+                case expandableBranchFacts |> List.LocalExtra.allOkMap (\branch -> branch |> factExpansionAllExpand project) of
                     Err error ->
                         EvaluationErrorRelationNotDefined error.relationNotDefined |> Err
 
@@ -793,7 +793,7 @@ valueLookupToLookup =
     \valueLookup ->
         valueLookup
             |> FastDict.toList
-            |> List.LauExtra.allJustMap
+            |> List.LocalExtra.allJustMap
                 (\( identifier, value ) ->
                     Maybe.map (\lookup -> ( identifier, lookup ))
                         (value |> valueToValueLookup |> Maybe.andThen valueLookupToLookup)
@@ -817,7 +817,7 @@ factExpansionAllExpand project =
                     |> Result.mapError (\error -> { relationNotDefined = error.relationNotDefined })
 
             onePart :: twoPart :: otherParts ->
-                case (onePart :: twoPart :: otherParts) |> List.LauExtra.firstJustMap factExpansionPartIsInvalid of
+                case (onePart :: twoPart :: otherParts) |> List.LocalExtra.firstJustMap factExpansionPartIsInvalid of
                     Just reason ->
                         FactExpansionPartInvalid reason
                             |> factExpansionAllSingleton
@@ -860,7 +860,7 @@ factExpansionAllExpand project =
                         in
                         case variableSubstitutionParts of
                             [] ->
-                                case notObviouslyValidParts |> List.LauExtra.allOkMap (\part -> part |> factExpansionPartExpand project) of
+                                case notObviouslyValidParts |> List.LocalExtra.allOkMap (\part -> part |> factExpansionPartExpand project) of
                                     Err error ->
                                         Err error
 
@@ -868,7 +868,7 @@ factExpansionAllExpand project =
                                         { factExpansionAny =
                                             partExpansions
                                                 |> List.map .factExpansionAny
-                                                |> List.LauExtra.oneOfEach
+                                                |> List.LocalExtra.oneOfEach
                                                 |> List.map
                                                     (\newBranch ->
                                                         { factExpansionAll = newBranch |> List.concatMap .factExpansionAll }

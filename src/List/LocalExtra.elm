@@ -1,4 +1,4 @@
-module List.LocalExtra exposing (allJustMap, elementAtIndexAlter, firstJustMap, insertElementAtIndex, interweave, oneOfEach, removeElementAtIndex, setFlatMap)
+module List.LocalExtra exposing (allJustMap, allOkMap, elementAtIndexAlter, firstJustMap, insertElementAtIndex, interweave, oneOfEach, removeElementAtIndex, setFlatMap)
 
 import Set exposing (Set)
 
@@ -114,14 +114,32 @@ firstJustMap elementToMaybeFound list =
                     Just found
 
 
+allOkMap :
+    (element -> Result error success)
+    -> (List element -> Result error (List success))
+allOkMap elementToResult list =
+    case list of
+        [] ->
+            Ok []
+
+        head :: tail ->
+            case elementToResult head of
+                Err error ->
+                    Err error
+
+                Ok headSuccess ->
+                    Result.map (\tailOks -> headSuccess :: tailOks)
+                        (allOkMap elementToResult tail)
+
+
 oneOfEach : List (List a) -> List (List a)
 oneOfEach list =
     case list of
         [] ->
             []
 
-        [ onlyElement ] ->
-            [ onlyElement ]
+        [ onlyList ] ->
+            onlyList |> List.map List.singleton
 
         list0 :: list1 :: list2Up ->
             let
@@ -132,5 +150,5 @@ oneOfEach list =
             list0
                 |> List.concatMap
                     (\oneOfHead ->
-                        list1UpOneOfEach |> List.map ((::) oneOfHead)
+                        list1UpOneOfEach |> List.map (\t -> t |> (::) oneOfHead)
                     )

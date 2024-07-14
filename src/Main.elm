@@ -213,7 +213,7 @@ factUiStateToLau =
                     (relation.argument |> Maybe.andThen valueUiStateToLau)
 
             Equal toEquateWithHoles ->
-                Maybe.map2 (\toEquateA toEquateB -> Lau.Equal [ toEquateA, toEquateB ])
+                Maybe.map2 (\toEquateA toEquateB -> Lau.Equal { a = toEquateA, b = toEquateB })
                     (toEquateWithHoles.a |> Maybe.andThen valueUiStateToLau)
                     (toEquateWithHoles.b |> Maybe.andThen valueUiStateToLau)
 
