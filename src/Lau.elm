@@ -136,6 +136,12 @@ factBranchAllSingleton =
     \factBranch -> { branchAll = factBranch |> List.singleton }
 
 
+factExpansionAnySingleton : FactBranchAll -> FactExpansionAny
+factExpansionAnySingleton =
+    \factBranchAll ->
+        { factExpansionAny = factBranchAll |> List.singleton }
+
+
 scopedVariableIsDeeperInThan : ScopedVariableName -> (ScopedVariableName -> Bool)
 scopedVariableIsDeeperInThan bVariable =
     \aVariable ->
@@ -257,12 +263,11 @@ equal2Expand =
                         { branchAll = expanded |> List.concatMap .branchAll }
 
 
-factOrInvert : List FactBranchAll -> FactBranchAll
-factOrInvert =
-    \factBranches ->
-        -- TODO not 100% sure
+factExpansionAnyInvert : FactExpansionAny -> FactBranchAll
+factExpansionAnyInvert =
+    \factExpansionAny ->
         { branchAll =
-            factBranches
+            factExpansionAny.factExpansionAny
                 |> List.concatMap
                     (\inverseFactBranch ->
                         inverseFactBranch |> factBranchAllInvert |> .branchAll
@@ -304,7 +309,7 @@ factBranchPartInvert =
 
 factExpand :
     { scope : List ScopeRegion }
-    -> (FactWithVariableName ScopedVariableName -> List FactBranchAll)
+    -> (FactWithVariableName ScopedVariableName -> FactExpansionAny)
 factExpand context fact =
     case fact of
         RelationUse relation ->
@@ -314,48 +319,53 @@ factExpand context fact =
                 , innerScope = ScopeRegionIntoUseRelation relation.identifier :: context.scope
                 }
                 |> factBranchAllSingleton
-                |> List.singleton
+                |> factExpansionAnySingleton
 
         Equal values ->
-            values |> equal2Expand |> List.singleton
+            values |> equal2Expand |> factExpansionAnySingleton
 
         Not inverseFact ->
             inverseFact
                 |> factExpand context
-                |> factOrInvert
-                |> List.singleton
+                |> factExpansionAnyInvert
+                |> factExpansionAnySingleton
 
         All parts ->
-            parts
-                |> List.indexedMap
-                    (\indexInAll part ->
-                        part
-                            |> factExpand
-                                { scope =
-                                    ScopeRegionPartAtIndex indexInAll
-                                        :: context.scope
-                                }
-                    )
-                |> List.LauExtra.oneOfEach
-                |> List.map
-                    (\branchParts ->
-                        { branchAll =
-                            branchParts |> List.concatMap .branchAll
-                        }
-                    )
+            { factExpansionAny =
+                parts
+                    |> List.indexedMap
+                        (\indexInAll part ->
+                            part
+                                |> factExpand
+                                    { scope =
+                                        ScopeRegionPartAtIndex indexInAll
+                                            :: context.scope
+                                    }
+                                |> .factExpansionAny
+                        )
+                    |> List.LauExtra.oneOfEach
+                    |> List.map
+                        (\branchParts ->
+                            { branchAll =
+                                branchParts |> List.concatMap .branchAll
+                            }
+                        )
+            }
 
         Any branches ->
-            branches
-                |> List.indexedMap
-                    (\indexInAny part ->
-                        part
-                            |> factExpand
-                                { scope =
-                                    ScopeRegionBranchAtIndex indexInAny
-                                        :: context.scope
-                                }
-                    )
-                |> List.concat
+            { factExpansionAny =
+                branches
+                    |> List.indexedMap
+                        (\indexInAny part ->
+                            part
+                                |> factExpand
+                                    { scope =
+                                        ScopeRegionBranchAtIndex indexInAny
+                                            :: context.scope
+                                    }
+                        )
+                    |> List.concatMap .factExpansionAny
+            }
 
 
 {-| Find a value that satisfies the constraints for an argument variable in the main definition
@@ -375,16 +385,16 @@ evaluate =
                             |> Variable
                     }
                     |> factExpand { scope = [] }
-                    |> factOrExpandFully project
+                    |> factExpansionAnyExpandFully project
 
 
-factOrExpandFully : Project -> (List FactBranchAll -> Result String Lookup)
-factOrExpandFully project =
+factExpansionAnyExpandFully : Project -> (FactExpansionAny -> Result String Lookup)
+factExpansionAnyExpandFully project =
     \branchesIncludingInvalid ->
         let
             branchesExpandedResults : List ExpandedResult
             branchesExpandedResults =
-                branchesIncludingInvalid
+                branchesIncludingInvalid.factExpansionAny
                     |> List.map factBranchAllToExpandedResult
 
             firstBranchWithLookupResult : Maybe Lookup
@@ -428,7 +438,7 @@ factOrExpandFully project =
                     determinedOrNeedsExpanding : Result (List FactBranchAll) Lookup
                     determinedOrNeedsExpanding =
                         expandableBranchFacts
-                            |> List.concatMap (\branch -> branch |> factBranchAllExpand project)
+                            |> List.concatMap (\branch -> branch |> factBranchAllExpand project |> .factExpansionAny)
                             |> List.foldl
                                 (\branchExpanded soFar ->
                                     case soFar of
@@ -494,8 +504,8 @@ factOrExpandFully project =
                                            ()
                                in
                             -}
-                            needsExpanding
-                                |> factOrExpandFully project
+                            { factExpansionAny = needsExpanding }
+                                |> factExpansionAnyExpandFully project
 
 
 factBranchAllToExpandedResult : FactBranchAll -> ExpandedResult
@@ -682,20 +692,20 @@ factBranchPartToString =
                     |> String.concat
 
 
-factBranchAllExpand : Project -> (FactBranchAll -> List FactBranchAll)
+factBranchAllExpand : Project -> (FactBranchAll -> FactExpansionAny)
 factBranchAllExpand project =
     \factBranchAll ->
         case factBranchAll.branchAll of
             [] ->
-                BranchPartValid "empty all" |> factBranchAllSingleton |> List.singleton
+                BranchPartValid "empty all" |> factBranchAllSingleton |> factExpansionAnySingleton
 
             [ only ] ->
-                only |> factBranchExpand project
+                only |> factBranchPartExpand project
 
             onePart :: twoPart :: otherParts ->
                 case (onePart :: twoPart :: otherParts) |> List.LauExtra.firstJustMap factBranchIsInvalid of
                     Just reason ->
-                        BranchPartInvalid reason |> factBranchAllSingleton |> List.singleton
+                        BranchPartInvalid reason |> factBranchAllSingleton |> factExpansionAnySingleton
 
                     Nothing ->
                         let
@@ -733,13 +743,15 @@ factBranchAllExpand project =
                         in
                         case variableSubstitutionParts of
                             [] ->
-                                notObviouslyValidParts
-                                    |> List.map (\part -> part |> factBranchExpand project)
-                                    |> List.LauExtra.oneOfEach
-                                    |> List.map
-                                        (\branchParts ->
-                                            { branchAll = branchParts |> List.concatMap .branchAll }
-                                        )
+                                { factExpansionAny =
+                                    notObviouslyValidParts
+                                        |> List.map (\part -> part |> factBranchPartExpand project |> .factExpansionAny)
+                                        |> List.LauExtra.oneOfEach
+                                        |> List.map
+                                            (\branchParts ->
+                                                { branchAll = branchParts |> List.concatMap .branchAll }
+                                            )
+                                }
 
                             oneVariableSubstitutionPart :: otherVariableSubstitutionParts ->
                                 let
@@ -800,25 +812,27 @@ factBranchAllExpand project =
                                             )
                                         |> List.concatMap .branchAll
                                 }
-                                    |> List.singleton
+                                    |> factExpansionAnySingleton
 
 
-factBranchExpand : Project -> (FactBranchPart -> List FactBranchAll)
-factBranchExpand project factBranch =
+factBranchPartExpand : Project -> (FactBranchPart -> FactExpansionAny)
+factBranchPartExpand project factBranch =
     case factBranch of
         BranchPartValid whyValid ->
-            BranchPartValid whyValid |> factBranchAllSingleton |> List.singleton
+            BranchPartValid whyValid |> factBranchAllSingleton |> factExpansionAnySingleton
 
         BranchPartInvalid whyInvalid ->
-            BranchPartInvalid whyInvalid |> factBranchAllSingleton |> List.singleton
+            BranchPartInvalid whyInvalid |> factBranchAllSingleton |> factExpansionAnySingleton
 
         BranchPartValidVariableSubstitution substitution ->
-            BranchPartValidVariableSubstitution substitution |> factBranchAllSingleton |> List.singleton
+            BranchPartValidVariableSubstitution substitution
+                |> factBranchAllSingleton
+                |> factExpansionAnySingleton
 
         BranchPartInvalidVariableSubstitution substitution ->
             BranchPartInvalidVariableSubstitution substitution
                 |> factBranchAllSingleton
-                |> List.singleton
+                |> factExpansionAnySingleton
 
         BranchPartValidRelation relation ->
             case project.relationDefinitions |> FastDict.get relation.identifier of
@@ -831,7 +845,7 @@ factBranchExpand project factBranch =
                             |> String.concat
                         )
                         |> factBranchAllSingleton
-                        |> List.singleton
+                        |> factExpansionAnySingleton
 
                 Just definition ->
                     definition.equivalentFact
@@ -859,7 +873,7 @@ factBranchExpand project factBranch =
                             |> String.concat
                         )
                         |> factBranchAllSingleton
-                        |> List.singleton
+                        |> factExpansionAnySingleton
 
                 Just definition ->
                     definition.equivalentFact
@@ -875,8 +889,8 @@ factBranchExpand project factBranch =
                                         }
                             )
                         |> factExpand { scope = inverseRelation.innerScope }
-                        |> factOrInvert
-                        |> List.singleton
+                        |> factExpansionAnyInvert
+                        |> factExpansionAnySingleton
 
 
 valueVariablesMap :
@@ -1115,3 +1129,7 @@ type FactBranchPart
         , argument : ValueWithVariableName ScopedVariableName
         , innerScope : List ScopeRegion
         }
+
+
+type alias FactExpansionAny =
+    { factExpansionAny : List FactBranchAll }
