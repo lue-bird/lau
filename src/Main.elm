@@ -3,7 +3,7 @@ port module Main exposing (BlockUiState(..), DragState, FactUiState(..), State, 
 {- dev notes
 
    Dragging offset:
-   Apparently offset does not work in svg
+   Apparently pointer offset relative to an element does not work in svg
    so we currently just take the top left with a stroke width distance.
    future alternative could be a custom svg g element that triggers a custom event
    https://discourse.elm-lang.org/t/dispatching-custom-events-only-if-needed/2740/7
