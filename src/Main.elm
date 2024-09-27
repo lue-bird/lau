@@ -559,7 +559,7 @@ valueOrHoleShapeSvg backgroundColor maybeValue =
 
 fontWidth : Float
 fontWidth =
-    fontSize * 0.53
+    fontSize * 0.56
 
 
 sizedSvgText : List (Web.DomModifier future) -> String -> SizedSvg future
