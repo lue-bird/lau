@@ -4,14 +4,13 @@ import Set exposing (Set)
 
 
 setFlatMap : (a -> Set comparableSetElement) -> (List a -> Set comparableSetElement)
-setFlatMap elementToSet =
-    \list ->
-        list
-            |> List.foldl
-                (\element soFar ->
-                    Set.union (element |> elementToSet) soFar
-                )
-                Set.empty
+setFlatMap elementToSet list =
+    list
+        |> List.foldl
+            (\element soFar ->
+                Set.union (element |> elementToSet) soFar
+            )
+            Set.empty
 
 
 interweave : List a -> List a -> List a
@@ -30,73 +29,69 @@ interweave aList bList =
 
 
 elementAtIndexAlter : Int -> (a -> a) -> (List a -> List a)
-elementAtIndexAlter indexToAlter elementAlter =
-    \list ->
-        list
-            |> List.indexedMap
-                (\futurePartIndex futurePart ->
-                    if futurePartIndex == indexToAlter then
-                        futurePart |> elementAlter
+elementAtIndexAlter indexToAlter elementAlter list =
+    list
+        |> List.indexedMap
+            (\futurePartIndex futurePart ->
+                if futurePartIndex == indexToAlter then
+                    futurePart |> elementAlter
 
-                    else
-                        futurePart
-                )
+                else
+                    futurePart
+            )
 
 
 removeElementAtIndex : Int -> (List a -> List a)
-removeElementAtIndex indexToRemove =
-    \list ->
-        if indexToRemove <= -1 then
-            list
+removeElementAtIndex indexToRemove list =
+    if indexToRemove <= -1 then
+        list
 
-        else
-            case list of
-                [] ->
-                    []
+    else
+        case list of
+            [] ->
+                []
 
-                head :: tail ->
-                    case indexToRemove of
-                        0 ->
-                            tail
+            head :: tail ->
+                case indexToRemove of
+                    0 ->
+                        tail
 
-                        indexToRemoveAtLeast1 ->
-                            head :: (tail |> removeElementAtIndex (indexToRemoveAtLeast1 - 1))
+                    indexToRemoveAtLeast1 ->
+                        head :: (tail |> removeElementAtIndex (indexToRemoveAtLeast1 - 1))
 
 
 insertElementAtIndex : Int -> a -> (List a -> List a)
-insertElementAtIndex indexToInsertAt elementToInsert =
-    \list ->
-        if indexToInsertAt <= -1 then
-            list
+insertElementAtIndex indexToInsertAt elementToInsert list =
+    if indexToInsertAt <= -1 then
+        list
 
-        else
-            case indexToInsertAt of
-                0 ->
-                    elementToInsert :: list
+    else
+        case indexToInsertAt of
+            0 ->
+                elementToInsert :: list
 
-                indexToInsertAtAtLeast1 ->
-                    case list of
-                        [] ->
-                            []
+            indexToInsertAtAtLeast1 ->
+                case list of
+                    [] ->
+                        []
 
-                        head :: tail ->
-                            head :: (tail |> insertElementAtIndex (indexToInsertAtAtLeast1 - 1) elementToInsert)
+                    head :: tail ->
+                        head :: (tail |> insertElementAtIndex (indexToInsertAtAtLeast1 - 1) elementToInsert)
 
 
 allJustMap : (a -> Maybe b) -> (List a -> Maybe (List b))
-allJustMap elementToMaybe =
-    \list ->
-        case list of
-            [] ->
-                [] |> Just
+allJustMap elementToMaybe list =
+    case list of
+        [] ->
+            [] |> Just
 
-            head :: tail ->
-                case head |> elementToMaybe of
-                    Nothing ->
-                        Nothing
+        head :: tail ->
+            case head |> elementToMaybe of
+                Nothing ->
+                    Nothing
 
-                    Just headJust ->
-                        Maybe.map ((::) headJust) (tail |> allJustMap elementToMaybe)
+                Just headJust ->
+                    Maybe.map ((::) headJust) (tail |> allJustMap elementToMaybe)
 
 
 firstJustMap : (a -> Maybe b) -> List a -> Maybe b

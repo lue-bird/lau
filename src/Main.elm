@@ -80,135 +80,126 @@ type ValueUiState
 
 
 maybeFactVariables : Maybe FactUiState -> Set String
-maybeFactVariables =
-    \maybeFactUiState ->
-        case maybeFactUiState of
-            Nothing ->
-                Set.empty
+maybeFactVariables maybeFactUiState =
+    case maybeFactUiState of
+        Nothing ->
+            Set.empty
 
-            Just factUiState ->
-                factUiState |> factVariables
+        Just factUiState ->
+            factUiState |> factVariables
 
 
 maybeValueVariables : Maybe ValueUiState -> Set String
-maybeValueVariables =
-    \maybeValueUiState ->
-        case maybeValueUiState of
-            Nothing ->
-                Set.empty
+maybeValueVariables maybeValueUiState =
+    case maybeValueUiState of
+        Nothing ->
+            Set.empty
 
-            Just valueUiState ->
-                valueUiState |> valueVariables
+        Just valueUiState ->
+            valueUiState |> valueVariables
 
 
 factVariables : FactUiState -> Set String
-factVariables =
-    \factUiState ->
-        case factUiState of
-            Not maybeFactInverse ->
-                maybeFactInverse |> maybeFactVariables
+factVariables factUiState =
+    case factUiState of
+        Not maybeFactInverse ->
+            maybeFactInverse |> maybeFactVariables
 
-            Equal values ->
-                Set.union
-                    (values.a |> maybeValueVariables)
-                    (values.b |> maybeValueVariables)
+        Equal values ->
+            Set.union
+                (values.a |> maybeValueVariables)
+                (values.b |> maybeValueVariables)
 
-            Any branches ->
-                branches |> List.LocalExtra.setFlatMap factVariables
+        Any branches ->
+            branches |> List.LocalExtra.setFlatMap factVariables
 
-            All parts ->
-                parts |> List.LocalExtra.setFlatMap factVariables
+        All parts ->
+            parts |> List.LocalExtra.setFlatMap factVariables
 
-            RelationUse relationUse ->
-                relationUse.argument |> maybeValueVariables
+        RelationUse relationUse ->
+            relationUse.argument |> maybeValueVariables
 
 
 valueVariables : ValueUiState -> Set String
-valueVariables =
-    \value ->
-        case value of
-            Variable variableName ->
-                variableName |> Set.singleton
+valueVariables value =
+    case value of
+        Variable variableName ->
+            variableName |> Set.singleton
 
-            ValueLookup valueLookup ->
-                valueLookup
-                    |> List.LocalExtra.setFlatMap
-                        (\entry -> entry.value |> maybeValueVariables)
+        ValueLookup valueLookup ->
+            valueLookup
+                |> List.LocalExtra.setFlatMap
+                    (\entry -> entry.value |> maybeValueVariables)
 
 
 maybeFactEntryKeys : Maybe FactUiState -> Set String
-maybeFactEntryKeys =
-    \maybeFact ->
-        case maybeFact of
-            Nothing ->
-                Set.empty
+maybeFactEntryKeys maybeFact =
+    case maybeFact of
+        Nothing ->
+            Set.empty
 
-            Just fact ->
-                fact |> factEntryKeys
+        Just fact ->
+            fact |> factEntryKeys
 
 
 maybeValueEntryKeys : Maybe ValueUiState -> Set String
-maybeValueEntryKeys =
-    \maybeValue ->
-        case maybeValue of
-            Nothing ->
-                Set.empty
+maybeValueEntryKeys maybeValue =
+    case maybeValue of
+        Nothing ->
+            Set.empty
 
-            Just value ->
-                value |> valueEntryKeys
+        Just value ->
+            value |> valueEntryKeys
 
 
 factEntryKeys : FactUiState -> Set String
-factEntryKeys =
-    \fact ->
-        case fact of
-            RelationUse relationUse ->
-                relationUse.argument |> maybeValueEntryKeys
+factEntryKeys fact =
+    case fact of
+        RelationUse relationUse ->
+            relationUse.argument |> maybeValueEntryKeys
 
-            Not inverseFact ->
-                inverseFact |> maybeFactEntryKeys
+        Not inverseFact ->
+            inverseFact |> maybeFactEntryKeys
 
-            All parts ->
-                parts |> List.LocalExtra.setFlatMap factEntryKeys
+        All parts ->
+            parts |> List.LocalExtra.setFlatMap factEntryKeys
 
-            Any branches ->
-                branches |> List.LocalExtra.setFlatMap factEntryKeys
+        Any branches ->
+            branches |> List.LocalExtra.setFlatMap factEntryKeys
 
-            Equal values ->
-                Set.union (values.a |> maybeValueEntryKeys)
-                    (values.b |> maybeValueEntryKeys)
+        Equal values ->
+            Set.union (values.a |> maybeValueEntryKeys)
+                (values.b |> maybeValueEntryKeys)
 
 
 valueEntryKeys : ValueUiState -> Set String
-valueEntryKeys =
-    \value ->
-        case value of
-            Variable _ ->
-                Set.empty
+valueEntryKeys value =
+    case value of
+        Variable _ ->
+            Set.empty
 
-            ValueLookup valueLookup ->
-                valueLookup
-                    |> List.LocalExtra.setFlatMap
-                        (\entry -> Set.insert entry.key (entry.value |> maybeValueEntryKeys))
+        ValueLookup valueLookup ->
+            valueLookup
+                |> List.LocalExtra.setFlatMap
+                    (\entry -> Set.insert entry.key (entry.value |> maybeValueEntryKeys))
 
 
 valueUiStateToLau : ValueUiState -> Maybe (Lau.ValueWithVariableName String)
-valueUiStateToLau =
-    \valueWithHoles ->
-        case valueWithHoles of
-            Variable variableName ->
-                Lau.Variable variableName |> Just
+valueUiStateToLau valueWithHoles =
+    case valueWithHoles of
+        Variable variableName ->
+            Lau.Variable variableName |> Just
 
-            ValueLookup entriesWithHoles ->
-                Maybe.map Lau.ValueLookup
-                    (entriesWithHoles
-                        |> List.LocalExtra.allJustMap
-                            (\entry ->
-                                Maybe.map (\entryValue -> ( entry.key, entryValue ))
-                                    (entry.value |> Maybe.andThen valueUiStateToLau)
-                            )
-                        |> Maybe.map FastDict.fromList
-                    )
+        ValueLookup entriesWithHoles ->
+            Maybe.map Lau.ValueLookup
+                (entriesWithHoles
+                    |> List.LocalExtra.allJustMap
+                        (\entry ->
+                            Maybe.map (\entryValue -> ( entry.key, entryValue ))
+                                (entry.value |> Maybe.andThen valueUiStateToLau)
+                        )
+                    |> Maybe.map FastDict.fromList
+                )
 
 
 relationDefinitionsUiStateToLau :
@@ -218,60 +209,58 @@ relationDefinitionsUiStateToLau :
         , equivalentFact : Maybe FactUiState
         }
     -> Maybe (List Lau.RelationDefinition)
-relationDefinitionsUiStateToLau =
-    \relationDefinitionsUiState ->
-        relationDefinitionsUiState
-            |> FastDict.foldl
-                (\identifier relationInfoUiState soFar ->
-                    case soFar of
-                        Nothing ->
-                            Nothing
+relationDefinitionsUiStateToLau relationDefinitionsUiState =
+    relationDefinitionsUiState
+        |> FastDict.foldl
+            (\identifier relationInfoUiState soFar ->
+                case soFar of
+                    Nothing ->
+                        Nothing
 
-                        Just soFarLau ->
-                            Maybe.map2
-                                (\parameter equivalentFact ->
-                                    soFarLau
-                                        |> (::)
-                                            { identifier = identifier
-                                            , parameter = parameter
-                                            , equivalentFact = equivalentFact
-                                            }
-                                )
-                                (relationInfoUiState.parameter |> Maybe.andThen valueUiStateToLau)
-                                (relationInfoUiState.equivalentFact |> Maybe.andThen factUiStateToLau)
-                )
-                (Just [])
+                    Just soFarLau ->
+                        Maybe.map2
+                            (\parameter equivalentFact ->
+                                soFarLau
+                                    |> (::)
+                                        { identifier = identifier
+                                        , parameter = parameter
+                                        , equivalentFact = equivalentFact
+                                        }
+                            )
+                            (relationInfoUiState.parameter |> Maybe.andThen valueUiStateToLau)
+                            (relationInfoUiState.equivalentFact |> Maybe.andThen factUiStateToLau)
+            )
+            (Just [])
 
 
 factUiStateToLau : FactUiState -> Maybe Lau.Fact
-factUiStateToLau =
-    \factWithHoles ->
-        case factWithHoles of
-            Not inverseFactWithHoles ->
-                Maybe.map Lau.Not (inverseFactWithHoles |> Maybe.andThen factUiStateToLau)
+factUiStateToLau factWithHoles =
+    case factWithHoles of
+        Not inverseFactWithHoles ->
+            Maybe.map Lau.Not (inverseFactWithHoles |> Maybe.andThen factUiStateToLau)
 
-            RelationUse relation ->
-                Maybe.map
-                    (\argument ->
-                        Lau.RelationUse
-                            { identifier = relation.identifier
-                            , argument = argument
-                            }
-                    )
-                    (relation.argument |> Maybe.andThen valueUiStateToLau)
+        RelationUse relation ->
+            Maybe.map
+                (\argument ->
+                    Lau.RelationUse
+                        { identifier = relation.identifier
+                        , argument = argument
+                        }
+                )
+                (relation.argument |> Maybe.andThen valueUiStateToLau)
 
-            Equal toEquateWithHoles ->
-                Maybe.map2 (\toEquateA toEquateB -> Lau.Equal { a = toEquateA, b = toEquateB })
-                    (toEquateWithHoles.a |> Maybe.andThen valueUiStateToLau)
-                    (toEquateWithHoles.b |> Maybe.andThen valueUiStateToLau)
+        Equal toEquateWithHoles ->
+            Maybe.map2 (\toEquateA toEquateB -> Lau.Equal { a = toEquateA, b = toEquateB })
+                (toEquateWithHoles.a |> Maybe.andThen valueUiStateToLau)
+                (toEquateWithHoles.b |> Maybe.andThen valueUiStateToLau)
 
-            All partsWithHoles ->
-                Maybe.map Lau.All
-                    (partsWithHoles |> List.LocalExtra.allJustMap factUiStateToLau)
+        All partsWithHoles ->
+            Maybe.map Lau.All
+                (partsWithHoles |> List.LocalExtra.allJustMap factUiStateToLau)
 
-            Any branchesWithHoles ->
-                Maybe.map Lau.Any
-                    (branchesWithHoles |> List.LocalExtra.allJustMap factUiStateToLau)
+        Any branchesWithHoles ->
+            Maybe.map Lau.Any
+                (branchesWithHoles |> List.LocalExtra.allJustMap factUiStateToLau)
 
 
 main : Web.Program State
@@ -375,18 +364,17 @@ missingThingBrightnessScale =
 
 
 colorBrightnessScaleBy : Float -> (Color -> Color)
-colorBrightnessScaleBy factor =
-    \color ->
-        let
-            colorComponents : { red : Float, green : Float, blue : Float, alpha : Float }
-            colorComponents =
-                color |> Color.toRgba
-        in
-        Color.rgba
-            (colorComponents.red * factor)
-            (colorComponents.green * factor)
-            (colorComponents.blue * factor)
-            colorComponents.alpha
+colorBrightnessScaleBy factor color =
+    let
+        colorComponents : { red : Float, green : Float, blue : Float, alpha : Float }
+        colorComponents =
+            color |> Color.toRgba
+    in
+    Color.rgba
+        (colorComponents.red * factor)
+        (colorComponents.green * factor)
+        (colorComponents.blue * factor)
+        colorComponents.alpha
 
 
 pathDArc :
@@ -621,19 +609,18 @@ svgStack modifiers subs =
 sizedSvgPad :
     { left : Float, right : Float, top : Float, bottom : Float }
     -> (SizedSvg future -> SizedSvg future)
-sizedSvgPad additionalPadding =
-    \sizedSvg ->
-        { width = sizedSvg.width + additionalPadding.left + additionalPadding.right
-        , height = sizedSvg.height + additionalPadding.bottom + additionalPadding.top
-        , svg =
-            svgStack
-                [ svgAttributeTranslate
-                    { x = additionalPadding.left
-                    , y = additionalPadding.top
-                    }
-                ]
-                [ sizedSvg.svg ]
-        }
+sizedSvgPad additionalPadding sizedSvg =
+    { width = sizedSvg.width + additionalPadding.left + additionalPadding.right
+    , height = sizedSvg.height + additionalPadding.bottom + additionalPadding.top
+    , svg =
+        svgStack
+            [ svgAttributeTranslate
+                { x = additionalPadding.left
+                , y = additionalPadding.top
+                }
+            ]
+            [ sizedSvg.svg ]
+    }
 
 
 sizedSvgHorizontalCentered : List (SizedSvg future) -> SizedSvg future
@@ -881,13 +868,12 @@ factShapeSvg fact =
 sizedSvgFutureMap :
     (future -> futureChanged)
     -> (SizedSvg future -> SizedSvg futureChanged)
-sizedSvgFutureMap futureChange =
-    \sized ->
-        { width = sized.width
-        , height = sized.height
-        , svg =
-            sized.svg |> Web.domFutureMap futureChange
-        }
+sizedSvgFutureMap futureChange sized =
+    { width = sized.width
+    , height = sized.height
+    , svg =
+        sized.svg |> Web.domFutureMap futureChange
+    }
 
 
 factInsertHoleShapeSvg : Color -> SizedSvg future_
@@ -1092,64 +1078,62 @@ valueLookupBackgroundColor =
 svgSizedVertical :
     List (SizedSvg future)
     -> SizedSvg future
-svgSizedVertical =
-    \elements ->
-        let
-            elementsAsSvgs :
-                { combinedHeight : Float
-                , widthMaximum : Float
-                , svgsReverse : List (Web.DomNode future)
-                }
-            elementsAsSvgs =
-                elements
-                    |> List.foldl
-                        (\asSvg soFar ->
-                            { combinedHeight = soFar.combinedHeight + asSvg.height
-                            , widthMaximum = Basics.max soFar.widthMaximum asSvg.width
-                            , svgsReverse =
-                                soFar.svgsReverse
-                                    |> (::)
-                                        (asSvg.svg
-                                            |> List.singleton
-                                            |> svgStack
-                                                [ svgAttributeTranslate
-                                                    { x = 0, y = soFar.combinedHeight }
-                                                ]
-                                        )
-                            }
-                        )
-                        { combinedHeight = 0
-                        , widthMaximum = 0
-                        , svgsReverse = []
+svgSizedVertical elements =
+    let
+        elementsAsSvgs :
+            { combinedHeight : Float
+            , widthMaximum : Float
+            , svgsReverse : List (Web.DomNode future)
+            }
+        elementsAsSvgs =
+            elements
+                |> List.foldl
+                    (\asSvg soFar ->
+                        { combinedHeight = soFar.combinedHeight + asSvg.height
+                        , widthMaximum = Basics.max soFar.widthMaximum asSvg.width
+                        , svgsReverse =
+                            soFar.svgsReverse
+                                |> (::)
+                                    (asSvg.svg
+                                        |> List.singleton
+                                        |> svgStack
+                                            [ svgAttributeTranslate
+                                                { x = 0, y = soFar.combinedHeight }
+                                            ]
+                                    )
                         }
-        in
-        { height = elementsAsSvgs.combinedHeight
-        , width = elementsAsSvgs.widthMaximum
-        , svg =
-            elementsAsSvgs.svgsReverse
-                |> List.reverse
-                |> svgStack []
-        }
+                    )
+                    { combinedHeight = 0
+                    , widthMaximum = 0
+                    , svgsReverse = []
+                    }
+    in
+    { height = elementsAsSvgs.combinedHeight
+    , width = elementsAsSvgs.widthMaximum
+    , svg =
+        elementsAsSvgs.svgsReverse
+            |> List.reverse
+            |> svgStack []
+    }
 
 
 valueLookupEntryContentSvg : { key : String, value : SizedSvg future } -> SizedSvg future
-valueLookupEntryContentSvg =
-    \entry ->
-        let
-            entryNameSvg : SizedSvg future_
-            entryNameSvg =
-                sizedSvgUnselectableText entry.key
-        in
-        sizedSvgHorizontalCentered
-            [ entryNameSvg
-                |> sizedSvgPad
-                    { left = strokeWidth / 2
-                    , top = 0
-                    , bottom = 0
-                    , right = fontWidth
-                    }
-            , entry.value
-            ]
+valueLookupEntryContentSvg entry =
+    let
+        entryNameSvg : SizedSvg future_
+        entryNameSvg =
+            sizedSvgUnselectableText entry.key
+    in
+    sizedSvgHorizontalCentered
+        [ entryNameSvg
+            |> sizedSvgPad
+                { left = strokeWidth / 2
+                , top = 0
+                , bottom = 0
+                , right = fontWidth
+                }
+        , entry.value
+        ]
 
 
 circleSvg : { radius : Float } -> List (Web.DomModifier future) -> SizedSvg future
@@ -1246,218 +1230,217 @@ valueSvg :
     DragState
     -> ValueUiState
     -> SizedSvg { dragged : DragState, value : Maybe ValueUiState }
-valueSvg dragState =
-    \value ->
-        case value of
-            Variable variableName ->
-                variableShapeSvg variableName
-                    |> List.singleton
-                    |> sizedSvgStack
-                        [ domListenToPointerDown
-                            |> Web.domModifierFutureMap
-                                (\pointer ->
-                                    { dragged =
-                                        Just
-                                            { x = pointer.x
-                                            , y = pointer.y
-                                            , block = BlockValue (Variable variableName)
-                                            }
-                                    , value = Nothing
-                                    }
-                                )
-                        ]
+valueSvg dragState value =
+    case value of
+        Variable variableName ->
+            variableShapeSvg variableName
+                |> List.singleton
+                |> sizedSvgStack
+                    [ domListenToPointerDown
+                        |> Web.domModifierFutureMap
+                            (\pointer ->
+                                { dragged =
+                                    Just
+                                        { x = pointer.x
+                                        , y = pointer.y
+                                        , block = BlockValue (Variable variableName)
+                                        }
+                                , value = Nothing
+                                }
+                            )
+                    ]
 
-            ValueLookup valueLookup ->
-                let
-                    existingEntrySvgs : List (SizedSvg { dragged : DragState, value : Maybe ValueUiState })
-                    existingEntrySvgs =
-                        valueLookup
-                            |> List.indexedMap
-                                (\entryIndex entry ->
-                                    let
-                                        entryContentSvg : SizedSvg { dragged : DragState, value : Maybe ValueUiState }
-                                        entryContentSvg =
-                                            valueLookupEntryContentSvg
-                                                { key = entry.key
-                                                , value =
-                                                    valueOrHoleSvg valueLookupBackgroundColor dragState entry.value
-                                                        |> sizedSvgFutureMap
-                                                            (\entryValueFuture ->
-                                                                { dragged = entryValueFuture.dragged
-                                                                , value =
-                                                                    ValueLookup
-                                                                        (valueLookup
-                                                                            |> List.LocalExtra.elementAtIndexAlter entryIndex
-                                                                                (\_ ->
-                                                                                    { key = entry.key
-                                                                                    , value = entryValueFuture.value
-                                                                                    }
-                                                                                )
-                                                                        )
-                                                                        |> Just
-                                                                }
-                                                            )
-                                                }
-                                    in
-                                    sizedSvgStack []
-                                        [ sizedSvgRoundedRect
-                                            [ domModifierFillUniform valueLookupBackgroundColor
-                                            , domListenToPointerDown
-                                                |> Web.domModifierFutureMap
-                                                    (\pointer ->
-                                                        { dragged =
-                                                            Just
-                                                                { x = pointer.x
-                                                                , y = pointer.y
-                                                                , block = BlockValue (ValueLookup [ entry ])
-                                                                }
-                                                        , value =
-                                                            case valueLookup |> List.LocalExtra.removeElementAtIndex entryIndex of
-                                                                [] ->
-                                                                    Nothing
-
-                                                                newEntry0 :: newEntry1Up ->
-                                                                    ValueLookup (newEntry0 :: newEntry1Up) |> Just
-                                                        }
-                                                    )
-                                            ]
-                                            { width = entryContentSvg.width
-                                            , height = entryContentSvg.height
-                                            , radius = strokeWidth
-                                            }
-                                        , entryContentSvg
-                                        ]
-                                )
-
-                    listenToDragStart : Web.DomModifier { dragged : DragState, value : Maybe ValueUiState }
-                    listenToDragStart =
-                        domListenToPointerDown
-                            |> Web.domModifierFutureMap
-                                (\pointer ->
-                                    { dragged =
-                                        Just
-                                            { x = pointer.x
-                                            , y = pointer.y
-                                            , block = BlockValue (ValueLookup valueLookup)
-                                            }
-                                    , value = Nothing
-                                    }
-                                )
-                in
-                case existingEntrySvgs of
-                    [] ->
-                        circleSvg { radius = strokeWidth }
-                            [ listenToDragStart
-                            , domModifierFillUniform valueLookupBackgroundColor
-                            ]
-
-                    entry0 :: entry1Up ->
-                        let
-                            svgWithoutEntryHoles : () -> SizedSvg { dragged : DragState, value : Maybe ValueUiState }
-                            svgWithoutEntryHoles () =
+        ValueLookup valueLookup ->
+            let
+                existingEntrySvgs : List (SizedSvg { dragged : DragState, value : Maybe ValueUiState })
+                existingEntrySvgs =
+                    valueLookup
+                        |> List.indexedMap
+                            (\entryIndex entry ->
                                 let
-                                    entryListSvg : SizedSvg { dragged : DragState, value : Maybe ValueUiState }
-                                    entryListSvg =
-                                        (entry0 :: entry1Up) |> svgSizedVertical
+                                    entryContentSvg : SizedSvg { dragged : DragState, value : Maybe ValueUiState }
+                                    entryContentSvg =
+                                        valueLookupEntryContentSvg
+                                            { key = entry.key
+                                            , value =
+                                                valueOrHoleSvg valueLookupBackgroundColor dragState entry.value
+                                                    |> sizedSvgFutureMap
+                                                        (\entryValueFuture ->
+                                                            { dragged = entryValueFuture.dragged
+                                                            , value =
+                                                                ValueLookup
+                                                                    (valueLookup
+                                                                        |> List.LocalExtra.elementAtIndexAlter entryIndex
+                                                                            (\_ ->
+                                                                                { key = entry.key
+                                                                                , value = entryValueFuture.value
+                                                                                }
+                                                                            )
+                                                                    )
+                                                                    |> Just
+                                                            }
+                                                        )
+                                            }
                                 in
                                 sizedSvgStack []
                                     [ sizedSvgRoundedRect
-                                        [ listenToDragStart
-                                        , domModifierFillUniform valueLookupBackgroundColor
-                                        ]
-                                        { radius = strokeWidth
-                                        , width = entryListSvg.width
-                                        , height = entryListSvg.height
-                                        }
-                                    , entryListSvg
-                                    ]
-                        in
-                        case dragState of
-                            Nothing ->
-                                svgWithoutEntryHoles ()
+                                        [ domModifierFillUniform valueLookupBackgroundColor
+                                        , domListenToPointerDown
+                                            |> Web.domModifierFutureMap
+                                                (\pointer ->
+                                                    { dragged =
+                                                        Just
+                                                            { x = pointer.x
+                                                            , y = pointer.y
+                                                            , block = BlockValue (ValueLookup [ entry ])
+                                                            }
+                                                    , value =
+                                                        case valueLookup |> List.LocalExtra.removeElementAtIndex entryIndex of
+                                                            [] ->
+                                                                Nothing
 
-                            Just dragged ->
-                                case dragged.block of
-                                    BlockFact _ ->
-                                        svgWithoutEntryHoles ()
-
-                                    BlockValue (Variable _) ->
-                                        svgWithoutEntryHoles ()
-
-                                    BlockValue (ValueLookup draggedValueLookup) ->
-                                        let
-                                            entriesWidthMaximum : Float
-                                            entriesWidthMaximum =
-                                                (entry0 :: entry1Up) |> List.map .width |> List.maximum |> Maybe.withDefault 0
-
-                                            entriesInsertHoleSvg : Int -> SizedSvg { dragged : DragState, value : Maybe ValueUiState }
-                                            entriesInsertHoleSvg insertIndex =
-                                                sizedSvgRoundedRect
-                                                    [ domModifierFillUniform
-                                                        (valueLookupBackgroundColor
-                                                            |> colorBrightnessScaleBy missingThingBrightnessScale
-                                                        )
-                                                    ]
-                                                    { radius = strokeWidth
-                                                    , width = entriesWidthMaximum
-                                                    , height = fontSize + strokeWidth
+                                                            newEntry0 :: newEntry1Up ->
+                                                                ValueLookup (newEntry0 :: newEntry1Up) |> Just
                                                     }
-                                                    |> List.singleton
-                                                    |> sizedSvgStack
-                                                        [ Web.domListenTo "pointerup"
-                                                            |> Web.domModifierFutureMap
-                                                                (\_ ->
-                                                                    { dragged = Nothing
-                                                                    , value =
-                                                                        Just
-                                                                            (ValueLookup
-                                                                                (draggedValueLookup
-                                                                                    |> List.foldr
-                                                                                        (\draggedEntry soFar ->
-                                                                                            if valueLookup |> List.any (\entry -> entry.key == draggedEntry.key) then
-                                                                                                soFar
-                                                                                                    |> List.map
-                                                                                                        (\entry ->
-                                                                                                            if entry.key == draggedEntry.key then
-                                                                                                                draggedEntry
+                                                )
+                                        ]
+                                        { width = entryContentSvg.width
+                                        , height = entryContentSvg.height
+                                        , radius = strokeWidth
+                                        }
+                                    , entryContentSvg
+                                    ]
+                            )
 
-                                                                                                            else
-                                                                                                                entry
-                                                                                                        )
+                listenToDragStart : Web.DomModifier { dragged : DragState, value : Maybe ValueUiState }
+                listenToDragStart =
+                    domListenToPointerDown
+                        |> Web.domModifierFutureMap
+                            (\pointer ->
+                                { dragged =
+                                    Just
+                                        { x = pointer.x
+                                        , y = pointer.y
+                                        , block = BlockValue (ValueLookup valueLookup)
+                                        }
+                                , value = Nothing
+                                }
+                            )
+            in
+            case existingEntrySvgs of
+                [] ->
+                    circleSvg { radius = strokeWidth }
+                        [ listenToDragStart
+                        , domModifierFillUniform valueLookupBackgroundColor
+                        ]
 
-                                                                                            else
-                                                                                                soFar
-                                                                                                    |> List.LocalExtra.insertElementAtIndex
-                                                                                                        insertIndex
-                                                                                                        draggedEntry
-                                                                                        )
-                                                                                        valueLookup
-                                                                                )
-                                                                            )
-                                                                    }
-                                                                )
-                                                        ]
+                entry0 :: entry1Up ->
+                    let
+                        svgWithoutEntryHoles : () -> SizedSvg { dragged : DragState, value : Maybe ValueUiState }
+                        svgWithoutEntryHoles () =
+                            let
+                                entryListSvg : SizedSvg { dragged : DragState, value : Maybe ValueUiState }
+                                entryListSvg =
+                                    (entry0 :: entry1Up) |> svgSizedVertical
+                            in
+                            sizedSvgStack []
+                                [ sizedSvgRoundedRect
+                                    [ listenToDragStart
+                                    , domModifierFillUniform valueLookupBackgroundColor
+                                    ]
+                                    { radius = strokeWidth
+                                    , width = entryListSvg.width
+                                    , height = entryListSvg.height
+                                    }
+                                , entryListSvg
+                                ]
+                    in
+                    case dragState of
+                        Nothing ->
+                            svgWithoutEntryHoles ()
 
-                                            entriesSvg : SizedSvg { dragged : DragState, value : Maybe ValueUiState }
-                                            entriesSvg =
-                                                List.LocalExtra.interweave
-                                                    (List.range 0 ((entry0 :: entry1Up) |> List.length)
-                                                        |> List.map entriesInsertHoleSvg
+                        Just dragged ->
+                            case dragged.block of
+                                BlockFact _ ->
+                                    svgWithoutEntryHoles ()
+
+                                BlockValue (Variable _) ->
+                                    svgWithoutEntryHoles ()
+
+                                BlockValue (ValueLookup draggedValueLookup) ->
+                                    let
+                                        entriesWidthMaximum : Float
+                                        entriesWidthMaximum =
+                                            (entry0 :: entry1Up) |> List.map .width |> List.maximum |> Maybe.withDefault 0
+
+                                        entriesInsertHoleSvg : Int -> SizedSvg { dragged : DragState, value : Maybe ValueUiState }
+                                        entriesInsertHoleSvg insertIndex =
+                                            sizedSvgRoundedRect
+                                                [ domModifierFillUniform
+                                                    (valueLookupBackgroundColor
+                                                        |> colorBrightnessScaleBy missingThingBrightnessScale
                                                     )
-                                                    (entry0 :: entry1Up)
-                                                    |> svgSizedVertical
-                                        in
-                                        sizedSvgStack []
-                                            [ sizedSvgRoundedRect
-                                                [ listenToDragStart
-                                                , domModifierFillUniform valueLookupBackgroundColor
                                                 ]
                                                 { radius = strokeWidth
-                                                , width = entriesSvg.width
-                                                , height = entriesSvg.height
+                                                , width = entriesWidthMaximum
+                                                , height = fontSize + strokeWidth
                                                 }
-                                            , entriesSvg
+                                                |> List.singleton
+                                                |> sizedSvgStack
+                                                    [ Web.domListenTo "pointerup"
+                                                        |> Web.domModifierFutureMap
+                                                            (\_ ->
+                                                                { dragged = Nothing
+                                                                , value =
+                                                                    Just
+                                                                        (ValueLookup
+                                                                            (draggedValueLookup
+                                                                                |> List.foldr
+                                                                                    (\draggedEntry soFar ->
+                                                                                        if valueLookup |> List.any (\entry -> entry.key == draggedEntry.key) then
+                                                                                            soFar
+                                                                                                |> List.map
+                                                                                                    (\entry ->
+                                                                                                        if entry.key == draggedEntry.key then
+                                                                                                            draggedEntry
+
+                                                                                                        else
+                                                                                                            entry
+                                                                                                    )
+
+                                                                                        else
+                                                                                            soFar
+                                                                                                |> List.LocalExtra.insertElementAtIndex
+                                                                                                    insertIndex
+                                                                                                    draggedEntry
+                                                                                    )
+                                                                                    valueLookup
+                                                                            )
+                                                                        )
+                                                                }
+                                                            )
+                                                    ]
+
+                                        entriesSvg : SizedSvg { dragged : DragState, value : Maybe ValueUiState }
+                                        entriesSvg =
+                                            List.LocalExtra.interweave
+                                                (List.range 0 ((entry0 :: entry1Up) |> List.length)
+                                                    |> List.map entriesInsertHoleSvg
+                                                )
+                                                (entry0 :: entry1Up)
+                                                |> svgSizedVertical
+                                    in
+                                    sizedSvgStack []
+                                        [ sizedSvgRoundedRect
+                                            [ listenToDragStart
+                                            , domModifierFillUniform valueLookupBackgroundColor
                                             ]
+                                            { radius = strokeWidth
+                                            , width = entriesSvg.width
+                                            , height = entriesSvg.height
+                                            }
+                                        , entriesSvg
+                                        ]
 
 
 factSvg :
@@ -2275,10 +2258,9 @@ relationDefinitionEntryKeys :
     , equivalentFact : Maybe FactUiState
     }
     -> Set String
-relationDefinitionEntryKeys =
-    \relationDefinition ->
-        Set.union (relationDefinition.parameter |> maybeValueEntryKeys)
-            (relationDefinition.equivalentFact |> maybeFactEntryKeys)
+relationDefinitionEntryKeys relationDefinition =
+    Set.union (relationDefinition.parameter |> maybeValueEntryKeys)
+        (relationDefinition.equivalentFact |> maybeFactEntryKeys)
 
 
 relationDefinitionVariables :
@@ -2287,10 +2269,9 @@ relationDefinitionVariables :
     , equivalentFact : Maybe FactUiState
     }
     -> Set String
-relationDefinitionVariables =
-    \relationDefinition ->
-        Set.union (relationDefinition.equivalentFact |> maybeFactVariables)
-            (relationDefinition.parameter |> maybeValueVariables)
+relationDefinitionVariables relationDefinition =
+    Set.union (relationDefinition.equivalentFact |> maybeFactVariables)
+        (relationDefinition.parameter |> maybeValueVariables)
 
 
 colorTransparent : Color
@@ -2594,14 +2575,13 @@ relationDefinitionSvgWithInteractivity definition =
 fastDictSetFlatMap :
     (comparableDictKey -> value -> Set comparableSetElement)
     -> (FastDict.Dict comparableDictKey value -> Set comparableSetElement)
-fastDictSetFlatMap entryToSet =
-    \dict ->
-        dict
-            |> FastDict.foldl
-                (\key value soFar ->
-                    Set.union (entryToSet key value) soFar
-                )
-                Set.empty
+fastDictSetFlatMap entryToSet dict =
+    dict
+        |> FastDict.foldl
+            (\key value soFar ->
+                Set.union (entryToSet key value) soFar
+            )
+            Set.empty
 
 
 type alias SizedSvg future =
