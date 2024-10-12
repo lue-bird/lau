@@ -1,5 +1,5 @@
 import * as Web from "@lue-bird/elm-state-interface-experimental"
-import { Elm } from "./Main.elm"
+import Main from "./Main.elm"
 
-const elmApp = Elm.Main.init()
+const elmApp = Main.init()
 Web.programStart({ ports: elmApp.ports, domElement: document.getElementById("app") })
