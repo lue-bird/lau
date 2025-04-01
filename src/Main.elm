@@ -363,7 +363,7 @@ missingThingBrightnessScale =
     0.54
 
 
-colorBrightnessScaleBy : Float -> (Color -> Color)
+colorBrightnessScaleBy : Float -> Color -> Color
 colorBrightnessScaleBy factor color =
     let
         colorComponents : { red : Float, green : Float, blue : Float, alpha : Float }
@@ -608,7 +608,8 @@ svgStack modifiers subs =
 
 sizedSvgPad :
     { left : Float, right : Float, top : Float, bottom : Float }
-    -> (SizedSvg future -> SizedSvg future)
+    -> SizedSvg future
+    -> SizedSvg future
 sizedSvgPad additionalPadding sizedSvg =
     { width = sizedSvg.width + additionalPadding.left + additionalPadding.right
     , height = sizedSvg.height + additionalPadding.bottom + additionalPadding.top
@@ -867,7 +868,8 @@ factShapeSvg fact =
 
 sizedSvgFutureMap :
     (future -> futureChanged)
-    -> (SizedSvg future -> SizedSvg futureChanged)
+    -> SizedSvg future
+    -> SizedSvg futureChanged
 sizedSvgFutureMap futureChange sized =
     { width = sized.width
     , height = sized.height
@@ -1669,7 +1671,7 @@ domStyleBackgroundColor color =
 
 interface : State -> Web.Interface State
 interface state =
-    [ [ Web.windowSizeRequest, Web.windowResizeListen ]
+    [ [ Web.windowSizeRequest, Web.windowSizeChangeListen ]
         |> Web.interfaceBatch
         |> Web.interfaceFutureMap
             (\windowSize ->
@@ -2419,8 +2421,9 @@ svgSizedTextInput currentString =
                     , Web.domStyle "vertical-align" "baseline"
                     , Web.domStyle "outline" "none"
                     , Web.domStyle "height" "100%"
-                    , Web.domStyle "width" ((textInputWidth |> String.fromFloat) ++ "px") --"100%"
-                    , Web.domAttribute "size" (characterCountSize |> String.fromInt)
+                    , Web.domStyle "width" ((textInputWidth |> String.fromFloat) ++ "px")
+                    , --"100%"
+                      Web.domAttribute "size" (characterCountSize |> String.fromInt)
                     , Web.domStringProperty "value" currentString
                     , Web.domListenTo "input"
                         |> Web.domModifierFutureMap
@@ -2574,7 +2577,8 @@ relationDefinitionSvgWithInteractivity definition =
 
 fastDictSetFlatMap :
     (comparableDictKey -> value -> Set comparableSetElement)
-    -> (FastDict.Dict comparableDictKey value -> Set comparableSetElement)
+    -> FastDict.Dict comparableDictKey value
+    -> Set comparableSetElement
 fastDictSetFlatMap entryToSet dict =
     dict
         |> FastDict.foldl
